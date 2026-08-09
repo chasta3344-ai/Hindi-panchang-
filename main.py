@@ -1,12 +1,21 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import swisseph as swe
 import datetime
 import pytz
 
-app = Flask(__name__)
-# AppCreator24 के HTML व्यू से API कॉल करने के लिए CORS ज़रूरी है
-CORS(app) 
+# Flask की जगह FastAPI का इस्तेमाल
+app = FastAPI()
+
+# AppCreator24 के HTML व्यू से API कॉल करने के लिए CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 12 राशियां और 27 नक्षत्र
 RASHI_NAMES = ["मेष", "वृषभ", "मिथुन", "कर्क", "सिंह", "कन्या", "तुला", "वृश्चिक", "धनु", "मकर", "कुंभ", "मीन"]
@@ -90,35 +99,29 @@ def get_kundali_data(year, month, day, hour, minute, lat, lon):
         "planets": planet_details
     }
 
-# API Route
-@app.route('/api/generate-kundali', methods=['GET'])
-def generate_kundali_api():
-    date_str = request.args.get('date') # Format: YYYY-MM-DD
-    time_str = request.args.get('time') # Format: HH:MM
-    
-    # अगर यूज़र ने लोकेशन नहीं डाली, तो डिफ़ॉल्ट उज्जैन लें
-    # (बाद में हम इसे डायनामिक करेंगे)
-    lat = float(request.args.get('lat', 23.1765))
-    lon = float(request.args.get('lon', 75.7885))
-    
-    if not date_str or not time_str:
-        return jsonify({"success": False, "error": "तारीख और समय देना आवश्यक है (date, time)"}), 400
+# API Route (FastAPI फॉर्मेट में)
+@app.get('/api/generate-kundali')
+def generate_kundali_api(date: str = None, time: str = None, lat: float = 23.1765, lon: float = 75.7885):
+    # अगर यूज़र ने लोकेशन नहीं डाली, तो डिफ़ॉल्ट उज्जैन (23.1765, 75.7885) लेगा
+    if not date or not time:
+        return JSONResponse(status_code=400, content={"success": False, "error": "तारीख और समय देना आवश्यक है (date, time)"})
         
     try:
-        y, m, d = map(int, date_str.split('-'))
-        hh, mm = map(int, time_str.split(':'))
+        y, m, d = map(int, date.split('-'))
+        hh, mm = map(int, time.split(':'))
         
         kundali_data = get_kundali_data(y, m, d, hh, mm, lat, lon)
-        return jsonify(kundali_data)
+        return kundali_data
         
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 # होम पेज टेस्ट के लिए
-@app.route('/')
+@app.get('/')
 def home():
-    return "Kundali API is running! Use /api/generate-kundali"
+    return {"message": "Kundali API is running successfully with FastAPI!"}
 
 if __name__ == '__main__':
+    import uvicorn
     # Render पर 0.0.0.0 और पोर्ट ज़रूरी है
-    app.run(host='0.0.0.0', port=5000)
+    uvicorn.run(app, host='0.0.0.0', port=5000)
