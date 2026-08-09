@@ -6,3 +6,7 @@ pydantic
 
 pyswisseph
 
+Flask==3.0.0
+Flask-Cors==4.0.0
+pyswisseph==2.10.3.2
+pytz==2023.3.post1
