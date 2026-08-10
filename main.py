@@ -19,7 +19,7 @@ TITHI_NAMES = ["प्रतिपदा", "द्वितीया", "तृ�
 YOGA_NAMES = ["विष्कुम्भ", "प्रीति", "आयुष्मान", "सौभाग्य", "शोभन", "अतिगण्ड", "सुकर्मा", "धृति", "शूल", "गण्ड", "वृद्धि", "ध्रुव", "व्याघात", "हर्षण", "वज्र", "सिद्धि", "व्यतीपात", "वरीयान", "परिघ", "शिव", "सिद्ध", "साध्य", "शुभ", "शुक्ल", "ब्रह्म", "ऐन्द्र", "वैधृति"]
 KARANA_NAMES = ["बव", "बालव", "कौलव", "तैतिल", "गर", "वणिज", "विष्टि", "शकुनि", "चतुष्पाद", "नाग", "किस्तुघ्न"]
 DAYS_HINDI = ["सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार"]
-
+HINDI_MONTHS = ["चैत्र", "वैशाख", "ज्येष्ठ", "आषाढ़", "श्रावण", "भाद्रपद", "आश्विन", "कार्तिक", "मार्गशीर्ष", "पौष", "माघ", "फाल्गुन"]
 
 def get_julian_day(dt):
     utc_dt = dt.astimezone(pytz.utc)
@@ -75,12 +75,24 @@ def get_panchang():
 
         # 5. वार, राशि, संवत
         var_name = DAYS_HINDI[dt.weekday()]
+        surya_rashi_idx = int(sun_lon / 30)
         chandra_rashi = RASHI_NAMES[int(moon_lon / 30)]
-        surya_rashi = RASHI_NAMES[int(sun_lon / 30)]
+        surya_rashi = RASHI_NAMES[surya_rashi_idx]
         vikram_samvat = str(y + 57)
         shaka_samvat = str(y - 78)
+        kali_samvat = str(y + 3101) # कलि संवत जोड़ा गया
 
-        # 6. Ephem से सूर्योदय/सूर्यास्त
+        # 6. अयन और ऋतु (Missing Data Added)
+        ayan = "उत्तरायण" if surya_rashi_idx in [9, 10, 11, 0, 1, 2] else "दक्षिणायन"
+        ritu_map = {11:"वसंत", 0:"वसंत", 1:"ग्रीष्म", 2:"ग्रीष्म", 3:"वर्षा", 4:"वर्षा", 5:"शरद", 6:"शरद", 7:"हेमंत", 8:"हेमंत", 9:"शिशिर", 10:"शिशिर"}
+        ritu = ritu_map.get(surya_rashi_idx, "--")
+
+        # 7. माह (पूर्णिमांत) (Missing Data Added)
+        amanta_idx = (surya_rashi_idx + 1) % 12
+        purnimant_idx = (amanta_idx + 1) % 12 if tithi_idx >= 15 else amanta_idx
+        maah_purnimant = HINDI_MONTHS[purnimant_idx]
+
+        # 8. Ephem से सूर्योदय/सूर्यास्त
         observer = ephem.Observer()
         observer.lat, observer.lon = '23.1765', '75.7885' # उज्जैन डिफ़ॉल्ट
         observer.date = dt.astimezone(pytz.utc)
@@ -110,7 +122,11 @@ def get_panchang():
                     "chandra_rashi": chandra_rashi,
                     "surya_rashi": surya_rashi,
                     "vikram_samvat": vikram_samvat,
-                    "shaka_samvat": shaka_samvat
+                    "shaka_samvat": shaka_samvat,
+                    "kali_samvat": kali_samvat,       # JSON में जोड़ा गया
+                    "ayan": ayan,                     # JSON में जोड़ा गया
+                    "ritu": ritu,                     # JSON में जोड़ा गया
+                    "maah_purnimant": maah_purnimant  # JSON में जोड़ा गया
                 },
                 "timings": {
                     "sunrise": sunrise,
