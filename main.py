@@ -49,7 +49,7 @@ def get_panchang():
         moon_pos, _ = swe.calc_ut(jd, swe.MOON, swe.FLG_SIDEREAL)
         sun_lon, moon_lon = sun_pos[0], moon_pos[0]
 
-        # 1. तिथि
+        # 1. तिथि और पक्ष
         tithi_val = (moon_lon - sun_lon) % 360 / 12.0
         tithi_idx = int(tithi_val)
         tithi_name = TITHI_NAMES[tithi_idx]
@@ -63,15 +63,19 @@ def get_panchang():
         yog_idx = int((sun_lon + moon_lon) % 360 / (360/27.0))
         yog_name = YOGA_NAMES[yog_idx]
 
-        # 4. करण
+        # 4. करण (1 और 2)
         karan_val = (moon_lon - sun_lon) % 360 / 6.0
         karan_idx = int(karan_val)
-        if karan_idx == 0: k_name = "किस्तुघ्न"
-        elif karan_idx >= 57: 
-            special_karans = ["शकुनि", "चतुष्पाद", "नाग"]
-            k_name = special_karans[karan_idx - 57]
-        else:
-            k_name = KARANA_NAMES[(karan_idx - 1) % 7]
+        
+        def get_karan_name(k_idx):
+            if k_idx == 0: return "किस्तुघ्न"
+            elif k_idx == 57: return "शकुनि"
+            elif k_idx == 58: return "चतुष्पाद"
+            elif k_idx == 59: return "नाग"
+            else: return KARANA_NAMES[(k_idx - 1) % 7]
+            
+        karan_1 = get_karan_name(karan_idx)
+        karan_2 = get_karan_name((karan_idx + 1) % 60)
 
         # 5. वार, राशि, संवत
         var_name = DAYS_HINDI[dt.weekday()]
@@ -80,26 +84,33 @@ def get_panchang():
         surya_rashi = RASHI_NAMES[surya_rashi_idx]
         vikram_samvat = str(y + 57)
         shaka_samvat = str(y - 78)
-        kali_samvat = str(y + 3101) # कलि संवत जोड़ा गया
+        kali_samvat = str(y + 3101)
 
-        # 6. अयन और ऋतु (Missing Data Added)
+        # 6. अयन और ऋतु
         ayan = "उत्तरायण" if surya_rashi_idx in [9, 10, 11, 0, 1, 2] else "दक्षिणायन"
         ritu_map = {11:"वसंत", 0:"वसंत", 1:"ग्रीष्म", 2:"ग्रीष्म", 3:"वर्षा", 4:"वर्षा", 5:"शरद", 6:"शरद", 7:"हेमंत", 8:"हेमंत", 9:"शिशिर", 10:"शिशिर"}
         ritu = ritu_map.get(surya_rashi_idx, "--")
 
-        # 7. माह (पूर्णिमांत) (Missing Data Added)
-        amanta_idx = (surya_rashi_idx + 1) % 12
+        # 7. माह (पूर्णिमांत) - सटीक अमावस्या लॉजिक
+        angle_diff = (moon_lon - sun_lon) % 360
+        sun_lon_at_amavasya = (sun_lon - (angle_diff * 0.0808)) % 360
+        amavasya_rashi_idx = int(sun_lon_at_amavasya / 30)
+        
+        amanta_idx = (amavasya_rashi_idx + 1) % 12
         purnimant_idx = (amanta_idx + 1) % 12 if tithi_idx >= 15 else amanta_idx
         maah_purnimant = HINDI_MONTHS[purnimant_idx]
 
-        # 8. Ephem से सूर्योदय/सूर्यास्त
+        # 8. Ephem से सूर्योदय/सूर्यास्त (उज्जैन डिफ़ॉल्ट)
         observer = ephem.Observer()
-        observer.lat, observer.lon = '23.1765', '75.7885' # उज्जैन डिफ़ॉल्ट
+        observer.lat, observer.lon = '23.1765', '75.7885'
         observer.date = dt.astimezone(pytz.utc)
         
         sun = ephem.Sun()
-        sunrise = ephem.localtime(observer.previous_rising(sun)).strftime("%I:%M %p")
-        sunset = ephem.localtime(observer.next_setting(sun)).strftime("%I:%M %p")
+        try:
+            sunrise = ephem.localtime(observer.previous_rising(sun)).strftime("%I:%M %p")
+            sunset = ephem.localtime(observer.next_setting(sun)).strftime("%I:%M %p")
+        except:
+            sunrise, sunset = "--", "--"
         
         moon = ephem.Moon()
         try: chandrodaya = ephem.localtime(observer.previous_rising(moon)).strftime("%I:%M %p")
@@ -117,16 +128,17 @@ def get_panchang():
                     "paksha": paksha,
                     "nakshatra": nak_name,
                     "yog": yog_name,
-                    "karan_1": k_name,
+                    "karan_1": karan_1,
+                    "karan_2": karan_2,
                     "var": var_name,
                     "chandra_rashi": chandra_rashi,
                     "surya_rashi": surya_rashi,
                     "vikram_samvat": vikram_samvat,
                     "shaka_samvat": shaka_samvat,
-                    "kali_samvat": kali_samvat,       # JSON में जोड़ा गया
-                    "ayan": ayan,                     # JSON में जोड़ा गया
-                    "ritu": ritu,                     # JSON में जोड़ा गया
-                    "maah_purnimant": maah_purnimant  # JSON में जोड़ा गया
+                    "kali_samvat": kali_samvat,
+                    "ayan": ayan,
+                    "ritu": ritu,
+                    "maah_purnimant": maah_purnimant
                 },
                 "timings": {
                     "sunrise": sunrise,
