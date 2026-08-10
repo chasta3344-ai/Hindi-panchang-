@@ -25,6 +25,9 @@ def get_julian_day(dt):
     utc_dt = dt.astimezone(pytz.utc)
     return swe.julday(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour + utc_dt.minute/60.0 + utc_dt.second/3600.0)
 
+# ==========================================
+# 1. PANCHANG API (पंचांग एंडपॉइंट)
+# ==========================================
 @app.route('/api/full-panchang-hindi-fix', methods=['GET'])
 @app.route('/api/full-panchang-hindi', methods=['GET'])
 def get_panchang():
@@ -65,7 +68,6 @@ def get_panchang():
         end_dt_utc = pytz.utc.localize(end_dt_utc)
         end_dt_local = end_dt_utc.astimezone(local_tz)
         
-        # अगर तिथि अगले दिन समाप्त हो रही है
         if end_dt_local.date() > dt.date():
             tithi_end_time = end_dt_local.strftime("अगले दिन %I:%M %p")
         else:
@@ -113,23 +115,38 @@ def get_panchang():
         purnimant_idx = (amanta_idx + 1) % 12 if tithi_idx >= 15 else amanta_idx
         maah_purnimant = HINDI_MONTHS[purnimant_idx]
 
-        # 8. Ephem से सूर्योदय/सूर्यास्त
+        # -------------------------------------------------------------
+        # 8. RENDER UTC SERVER FIX: सूर्योदय और सूर्यास्त का सटीक गणित
+        # -------------------------------------------------------------
         observer = ephem.Observer()
-        observer.lat, observer.lon = '23.1765', '75.7885' 
-        observer.date = dt.astimezone(pytz.utc)
+        observer.lat, observer.lon = '23.1765', '75.7885' # उज्जैन डिफ़ॉल्ट
+        
+        # दिन की शुरुआत (Midnight) से गणना करें
+        start_of_day = local_tz.localize(datetime.datetime(y, m, d, 0, 5)).astimezone(pytz.utc)
+        observer.date = start_of_day
         
         sun = ephem.Sun()
         try:
-            sunrise = ephem.localtime(observer.previous_rising(sun)).strftime("%I:%M %p")
-            sunset = ephem.localtime(observer.next_setting(sun)).strftime("%I:%M %p")
+            # Server UTC टाइम को Indian Time (IST) में बदलें
+            sun_rise_utc = observer.next_rising(sun).datetime()
+            sunrise = pytz.utc.localize(sun_rise_utc).astimezone(local_tz).strftime("%I:%M %p")
+            
+            sun_set_utc = observer.next_setting(sun).datetime()
+            sunset = pytz.utc.localize(sun_set_utc).astimezone(local_tz).strftime("%I:%M %p")
         except:
             sunrise, sunset = "--", "--"
         
         moon = ephem.Moon()
-        try: chandrodaya = ephem.localtime(observer.previous_rising(moon)).strftime("%I:%M %p")
+        try: 
+            moon_rise_utc = observer.next_rising(moon).datetime()
+            chandrodaya = pytz.utc.localize(moon_rise_utc).astimezone(local_tz).strftime("%I:%M %p")
         except: chandrodaya = "--"
-        try: chandrast = ephem.localtime(observer.next_setting(moon)).strftime("%I:%M %p")
+        
+        try: 
+            moon_set_utc = observer.next_setting(moon).datetime()
+            chandrast = pytz.utc.localize(moon_set_utc).astimezone(local_tz).strftime("%I:%M %p")
         except: chandrast = "--"
+        # -------------------------------------------------------------
 
         return jsonify({
             "success": True,
@@ -138,7 +155,7 @@ def get_panchang():
                 "summary_header": f"{tithi_name}, {nak_name} नक्षत्र",
                 "details": {
                     "tithi": tithi_name,
-                    "tithi_end_time": tithi_end_time,  # <--- नया डेटा जुड़ गया
+                    "tithi_end_time": tithi_end_time,
                     "paksha": paksha,
                     "nakshatra": nak_name,
                     "yog": yog_name,
@@ -167,10 +184,86 @@ def get_panchang():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ==========================================
+# 2. KUNDALI API (कुंडली और ग्रह एंडपॉइंट)
+# ==========================================
 @app.route('/api/generate-kundali', methods=['GET', 'POST'])
 def generate_kundali():
-    # ... (आपका मौजूदा कुण्डली वाला कोड यहाँ रहेगा, उसमें कोई बदलाव नहीं है) ...
-    pass
+    if request.method == 'POST':
+        data = request.json or {}
+        date_str = data.get('dob') or data.get('date')
+        time_str = data.get('time')
+    else:
+        date_str = request.args.get('date')
+        time_str = request.args.get('time')
+        
+    if not date_str or not time_str:
+        return jsonify({"success": False, "error": "Date and Time are required"}), 400
+
+    try:
+        y, m, d = map(int, date_str.split('-'))
+        hh, mm = map(int, time_str.split(':'))
+        
+        local_tz = pytz.timezone('Asia/Kolkata')
+        dt = local_tz.localize(datetime.datetime(y, m, d, hh, mm))
+        jd = get_julian_day(dt)
+        swe.set_sid_mode(swe.SIDM_LAHIRI)
+        
+        planets_to_calc = {
+            "सूर्य": swe.SUN, "चंद्र": swe.MOON, "मंगल": swe.MARS, 
+            "बुध": swe.MERCURY, "गुरु": swe.JUPITER, "शुक्र": swe.VENUS, 
+            "शनि": swe.SATURN, "राहु": swe.MEAN_NODE
+        }
+        
+        planet_data = {}
+        sun_lon = swe.calc_ut(jd, swe.SUN, swe.FLG_SIDEREAL)[0][0]
+
+        for name, p_id in planets_to_calc.items():
+            pos, _ = swe.calc_ut(jd, p_id, swe.FLG_SIDEREAL | swe.FLG_SPEED)
+            lon_deg = pos[0]
+            speed = pos[3]
+            
+            is_asta = False
+            if name not in ["सूर्य", "चंद्र", "राहु"]:
+                diff = abs(lon_deg - sun_lon)
+                if diff > 180: diff = 360 - diff
+                if diff <= 8.5: is_asta = True
+
+            planet_data[name] = {
+                "rashi": RASHI_NAMES[int(lon_deg / 30)],
+                "rashi_num": int(lon_deg / 30) + 1,
+                "degree": f"{int(lon_deg % 30)}°{int(((lon_deg % 30) % 1) * 60)}'",
+                "is_vakri": bool(speed < 0),
+                "is_asta": is_asta
+            }
+            
+        ketu_lon = (swe.calc_ut(jd, swe.MEAN_NODE, swe.FLG_SIDEREAL)[0][0] + 180) % 360
+        planet_data["केतु"] = {
+            "rashi": RASHI_NAMES[int(ketu_lon / 30)],
+            "rashi_num": int(ketu_lon / 30) + 1,
+            "degree": f"{int(ketu_lon % 30)}°{int(((ketu_lon % 30) % 1) * 60)}'",
+            "is_vakri": True,
+            "is_asta": False
+        }
+        
+        lat, lon = 23.1765, 75.7885
+        houses, ascmc = swe.houses(jd, lat, lon, b'P')
+        lagna_sidereal = (ascmc[0] - swe.get_ayanamsa_ut(jd)) % 360
+        lagna_rashi_num = int(lagna_sidereal / 30)
+
+        return jsonify({
+            "success": True,
+            "lagna": {
+                "rashi": RASHI_NAMES[lagna_rashi_num],
+                "rashi_num": lagna_rashi_num + 1,
+                "degree": f"{int(lagna_sidereal % 30)}°{int(((lagna_sidereal % 30) % 1) * 60)}'"
+            },
+            "planets": planet_data
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
