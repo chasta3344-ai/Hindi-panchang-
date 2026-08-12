@@ -155,14 +155,164 @@ def parse_date_time(date_str, time_str):
     ss = int(parts[2]) if len(parts) > 2 else 0
     return IST.localize(dt.datetime(y, m, d, hh, mm, ss))
 
+# ============================================================
+# LOCATION / INDIA POST PINCODE
+# ============================================================
+LOCATION_CACHE = {}
+
+def _http_json(url, timeout=12):
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "HindiPanchang-Kundali/2.1",
+            "Accept": "application/json"
+        }
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+def india_post_search(query):
+    query = (query or "").strip()
+    if not query:
+        return []
+
+    # The public PostOffice endpoint returns the Indian postal
+    # master information (post-office, district, state, pincode).
+    url = "https://api.postalpincode.in/PostOffice/" + urllib.parse.quote(query)
+    data = _http_json(url)
+    if not data or data[0].get("Status") != "Success":
+        return []
+
+    result = []
+    for po in data[0].get("PostOffice") or []:
+        result.append({
+            "display_name": "{}, {}, {} - {}".format(
+                po.get("Name", ""),
+                po.get("District", ""),
+                po.get("State", ""),
+                po.get("Pincode", "")
+            ),
+            "post_office": po.get("Name", ""),
+            "city": po.get("District") or po.get("Name") or "",
+            "district": po.get("District", ""),
+            "state": po.get("State", ""),
+            "pincode": str(po.get("Pincode", "")),
+            "country": "India"
+        })
+    return result
+
+def geocode_india_post_result(item):
+    key = (item.get("post_office"), item.get("pincode"), item.get("district"), item.get("state"))
+    if key in LOCATION_CACHE:
+        return LOCATION_CACHE[key]
+
+    queries = []
+    if item.get("pincode"):
+        queries.append(item["pincode"] + ", India")
+    if item.get("post_office"):
+        queries.append(item["post_office"] + ", " + item.get("district", "") + ", " + item.get("state", "") + ", India")
+
+    for q in queries:
+        params = urllib.parse.urlencode({
+            "q": q, "format": "jsonv2", "addressdetails": 1,
+            "limit": 5, "countrycodes": "in"
+        })
+        url = "https://nominatim.openstreetmap.org/search?" + params
+        try:
+            items = _http_json(url)
+        except Exception:
+            continue
+        if items:
+            # Prefer a result that contains the requested postcode.
+            chosen = next((x for x in items if x.get("address", {}).get("postcode") == item.get("pincode")), items[0])
+            try:
+                item["latitude"] = float(chosen["lat"])
+                item["longitude"] = float(chosen["lon"])
+                item["display_name"] = item["display_name"]
+                LOCATION_CACHE[key] = item
+                return item
+            except (KeyError, TypeError, ValueError):
+                pass
+
+    return None
+
+def location_search(query):
+    query = (query or "").strip()
+    if not query:
+        return []
+
+    # Six-digit input: India Post data is authoritative for the postal
+    # identity. Coordinates are then resolved separately.
+    postal_results = india_post_search(query)
+    if postal_results:
+        result = []
+        for item in postal_results[:12]:
+            geo = geocode_india_post_result(item)
+            if geo and "latitude" in geo:
+                result.append(geo)
+        return result
+
+    # For city/post-office text, first search India Post's postal master.
+    # This keeps displayed office/district/state/pincode synchronized with
+    # postal data instead of taking those fields from a generic geocoder.
+    try:
+        postal_results = india_post_search(query)
+    except Exception:
+        postal_results = []
+
+    result = []
+    for item in postal_results[:12]:
+        geo = geocode_india_post_result(item)
+        if geo and "latitude" in geo:
+            result.append(geo)
+    if result:
+        return result
+
+    # Last fallback: city search, but still only for coordinate discovery.
+    params = urllib.parse.urlencode({
+        "q": query + ", India", "format": "jsonv2",
+        "addressdetails": 1, "limit": 8, "countrycodes": "in"
+    })
+    url = "https://nominatim.openstreetmap.org/search?" + params
+    items = _http_json(url)
+    for item in items:
+        address = item.get("address", {})
+        result.append({
+            "display_name": item.get("display_name", ""),
+            "post_office": address.get("postcode", ""),
+            "city": address.get("city") or address.get("town") or address.get("village") or address.get("municipality") or address.get("county") or "",
+            "district": address.get("state_district", ""),
+            "state": address.get("state", ""),
+            "pincode": address.get("postcode", ""),
+            "country": address.get("country", "India"),
+            "latitude": float(item["lat"]),
+            "longitude": float(item["lon"])
+        })
+    return result
+
 def parse_location(source):
     city = source.get("city") or DEFAULT_CITY
+    lat_value = source.get("lat")
+    lon_value = source.get("lon")
+
     try:
-        lat = float(source.get("lat", DEFAULT_LAT))
-        lon = float(source.get("lon", DEFAULT_LON))
+        if lat_value is not None and lon_value is not None:
+            return city, float(lat_value), float(lon_value)
     except (TypeError, ValueError):
-        lat, lon = DEFAULT_LAT, DEFAULT_LON
-    return city, lat, lon
+        pass
+
+    # Never silently use Ujjain when the user supplied a location query.
+    # Resolve it through the same location service used by the UI.
+    query = source.get("pincode") or source.get("location") or city
+    try:
+        matches = location_search(query)
+        if matches:
+            m = matches[0]
+            return m.get("display_name") or m.get("city") or city, float(m["latitude"]), float(m["longitude"])
+    except Exception:
+        pass
+
+    return DEFAULT_CITY, DEFAULT_LAT, DEFAULT_LON
 
 def degree_text(lon):
     local = lon % 30.0
@@ -487,52 +637,16 @@ def calculate_vimshottari(dob_local, moon_lon):
         "mahadasha": mahadashas
     }
 
-# ============================================================
-# LOCATION SEARCH
-# ============================================================
-def location_search(query):
-    query = (query or "").strip()
-    if not query:
-        return []
+@app.get("/api/pincode")
+def pincode_api():
+    try:
+        q = request.args.get("q", "").strip()
+        if len(q) < 3:
+            return jsonify({"success": False, "error": "Enter PIN code or post office name"}), 400
+        return jsonify({"success": True, "results": location_search(q)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
-    params = urllib.parse.urlencode({
-        "q": query,
-        "format": "jsonv2",
-        "addressdetails": 1,
-        "limit": 8,
-        "countrycodes": "in"
-    })
-    url = "https://nominatim.openstreetmap.org/search?" + params
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "HindiPanchang-Kundali/1.0"}
-    )
-
-    with urllib.request.urlopen(req, timeout=10) as response:
-        raw = response.read().decode("utf-8")
-        items = json.loads(raw)
-
-    result = []
-    for item in items:
-        address = item.get("address", {})
-        result.append({
-            "display_name": item.get("display_name", ""),
-            "city": (
-                address.get("city")
-                or address.get("town")
-                or address.get("village")
-                or address.get("municipality")
-                or address.get("county")
-                or ""
-            ),
-            "district": address.get("state_district", ""),
-            "state": address.get("state", ""),
-            "pincode": address.get("postcode", ""),
-            "country": address.get("country", ""),
-            "latitude": float(item["lat"]),
-            "longitude": float(item["lon"])
-        })
-    return result
 
 # ============================================================
 # ROUTES
