@@ -9,6 +9,7 @@ import urllib.parse
 import urllib.request
 import json
 import os
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -155,164 +156,23 @@ def parse_date_time(date_str, time_str):
     ss = int(parts[2]) if len(parts) > 2 else 0
     return IST.localize(dt.datetime(y, m, d, hh, mm, ss))
 
-# ============================================================
-# LOCATION / INDIA POST PINCODE
-# ============================================================
-LOCATION_CACHE = {}
-
-def _http_json(url, timeout=12):
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "HindiPanchang-Kundali/2.1",
-            "Accept": "application/json"
-        }
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-def india_post_search(query):
-    query = (query or "").strip()
-    if not query:
-        return []
-
-    # The public PostOffice endpoint returns the Indian postal
-    # master information (post-office, district, state, pincode).
-    url = "https://api.postalpincode.in/PostOffice/" + urllib.parse.quote(query)
-    data = _http_json(url)
-    if not data or data[0].get("Status") != "Success":
-        return []
-
-    result = []
-    for po in data[0].get("PostOffice") or []:
-        result.append({
-            "display_name": "{}, {}, {} - {}".format(
-                po.get("Name", ""),
-                po.get("District", ""),
-                po.get("State", ""),
-                po.get("Pincode", "")
-            ),
-            "post_office": po.get("Name", ""),
-            "city": po.get("District") or po.get("Name") or "",
-            "district": po.get("District", ""),
-            "state": po.get("State", ""),
-            "pincode": str(po.get("Pincode", "")),
-            "country": "India"
-        })
-    return result
-
-def geocode_india_post_result(item):
-    key = (item.get("post_office"), item.get("pincode"), item.get("district"), item.get("state"))
-    if key in LOCATION_CACHE:
-        return LOCATION_CACHE[key]
-
-    queries = []
-    if item.get("pincode"):
-        queries.append(item["pincode"] + ", India")
-    if item.get("post_office"):
-        queries.append(item["post_office"] + ", " + item.get("district", "") + ", " + item.get("state", "") + ", India")
-
-    for q in queries:
-        params = urllib.parse.urlencode({
-            "q": q, "format": "jsonv2", "addressdetails": 1,
-            "limit": 5, "countrycodes": "in"
-        })
-        url = "https://nominatim.openstreetmap.org/search?" + params
-        try:
-            items = _http_json(url)
-        except Exception:
-            continue
-        if items:
-            # Prefer a result that contains the requested postcode.
-            chosen = next((x for x in items if x.get("address", {}).get("postcode") == item.get("pincode")), items[0])
-            try:
-                item["latitude"] = float(chosen["lat"])
-                item["longitude"] = float(chosen["lon"])
-                item["display_name"] = item["display_name"]
-                LOCATION_CACHE[key] = item
-                return item
-            except (KeyError, TypeError, ValueError):
-                pass
-
-    return None
-
-def location_search(query):
-    query = (query or "").strip()
-    if not query:
-        return []
-
-    # Six-digit input: India Post data is authoritative for the postal
-    # identity. Coordinates are then resolved separately.
-    postal_results = india_post_search(query)
-    if postal_results:
-        result = []
-        for item in postal_results[:12]:
-            geo = geocode_india_post_result(item)
-            if geo and "latitude" in geo:
-                result.append(geo)
-        return result
-
-    # For city/post-office text, first search India Post's postal master.
-    # This keeps displayed office/district/state/pincode synchronized with
-    # postal data instead of taking those fields from a generic geocoder.
-    try:
-        postal_results = india_post_search(query)
-    except Exception:
-        postal_results = []
-
-    result = []
-    for item in postal_results[:12]:
-        geo = geocode_india_post_result(item)
-        if geo and "latitude" in geo:
-            result.append(geo)
-    if result:
-        return result
-
-    # Last fallback: city search, but still only for coordinate discovery.
-    params = urllib.parse.urlencode({
-        "q": query + ", India", "format": "jsonv2",
-        "addressdetails": 1, "limit": 8, "countrycodes": "in"
-    })
-    url = "https://nominatim.openstreetmap.org/search?" + params
-    items = _http_json(url)
-    for item in items:
-        address = item.get("address", {})
-        result.append({
-            "display_name": item.get("display_name", ""),
-            "post_office": address.get("postcode", ""),
-            "city": address.get("city") or address.get("town") or address.get("village") or address.get("municipality") or address.get("county") or "",
-            "district": address.get("state_district", ""),
-            "state": address.get("state", ""),
-            "pincode": address.get("postcode", ""),
-            "country": address.get("country", "India"),
-            "latitude": float(item["lat"]),
-            "longitude": float(item["lon"])
-        })
-    return result
-
 def parse_location(source):
-    city = source.get("city") or DEFAULT_CITY
-    lat_value = source.get("lat")
-    lon_value = source.get("lon")
-
-    try:
-        if lat_value is not None and lon_value is not None:
-            return city, float(lat_value), float(lon_value)
-    except (TypeError, ValueError):
-        pass
-
-    # Never silently use Ujjain when the user supplied a location query.
-    # Resolve it through the same location service used by the UI.
-    query = source.get("pincode") or source.get("location") or city
-    try:
-        matches = location_search(query)
+    # NEVER silently use Ujjain when a caller supplied an invalid location.
+    city = (source.get("city") or "").strip()
+    lat_raw = source.get("lat")
+    lon_raw = source.get("lon")
+    if lat_raw not in (None, "") and lon_raw not in (None, ""):
+        try:
+            return city or DEFAULT_CITY, float(lat_raw), float(lon_raw)
+        except (TypeError, ValueError):
+            raise ValueError("Invalid latitude/longitude")
+    if city:
+        matches = location_search(city)
         if matches:
-            m = matches[0]
-            return m.get("display_name") or m.get("city") or city, float(m["latitude"]), float(m["longitude"])
-    except Exception:
-        pass
-
-    return DEFAULT_CITY, DEFAULT_LAT, DEFAULT_LON
+            x = matches[0]
+            return x["display_name"], x["latitude"], x["longitude"]
+        raise ValueError("Location not found. Select a valid Indian PIN/Post Office/City.")
+    raise ValueError("Location is required")
 
 def degree_text(lon):
     local = lon % 30.0
@@ -637,16 +497,148 @@ def calculate_vimshottari(dob_local, moon_lon):
         "mahadasha": mahadashas
     }
 
-@app.get("/api/pincode")
-def pincode_api():
-    try:
-        q = request.args.get("q", "").strip()
-        if len(q) < 3:
-            return jsonify({"success": False, "error": "Enter PIN code or post office name"}), 400
-        return jsonify({"success": True, "results": location_search(q)})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+# ============================================================
+# LOCATION SEARCH - INDIA PIN / POST OFFICE / CITY
+# ============================================================
+POSTAL_API = "https://api.postalpincode.in"
+NOMINATIM_API = "https://nominatim.openstreetmap.org/search"
+USER_AGENT = "HindiPanchang-Kundali/2.1"
 
+
+def http_json(url, timeout=12):
+    req = urllib.request.Request(url, headers={
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json"
+    })
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def geocode_india(query, limit=8):
+    params = urllib.parse.urlencode({
+        "q": query + ", India",
+        "format": "jsonv2",
+        "addressdetails": 1,
+        "limit": limit,
+        "countrycodes": "in"
+    })
+    items = http_json(NOMINATIM_API + "?" + params)
+    result = []
+    for item in items:
+        address = item.get("address", {})
+        result.append({
+            "display_name": item.get("display_name", query),
+            "city": (address.get("city") or address.get("town") or
+                     address.get("village") or address.get("municipality") or
+                     address.get("county") or query),
+            "district": (address.get("state_district") or
+                         address.get("district") or address.get("county") or ""),
+            "state": address.get("state", ""),
+            "pincode": address.get("postcode", ""),
+            "country": address.get("country", "India"),
+            "latitude": float(item["lat"]),
+            "longitude": float(item["lon"])
+        })
+    return result
+
+
+def postal_lookup(query):
+    """Return Indian Post Office records for PIN or Post Office name."""
+    q = (query or "").strip()
+    if not q:
+        return []
+    if re.fullmatch(r"\d{6}", q):
+        url = f"{POSTAL_API}/pincode/{q}"
+    else:
+        url = f"{POSTAL_API}/postoffice/{urllib.parse.quote(q)}"
+    try:
+        payload = http_json(url)
+    except Exception:
+        return []
+    if not isinstance(payload, list) or not payload:
+        return []
+    first = payload[0] or {}
+    if str(first.get("Status", "")).lower() != "success":
+        return []
+    offices = first.get("PostOffice") or []
+    result = []
+    for office in offices:
+        result.append({
+            "post_office": office.get("Name", ""),
+            "branch_type": office.get("BranchType", ""),
+            "delivery_status": office.get("DeliveryStatus", ""),
+            "division": office.get("Division", ""),
+            "region": office.get("Region", ""),
+            "circle": office.get("Circle", ""),
+            "district": office.get("District", ""),
+            "state": office.get("State", ""),
+            "pincode": office.get("Pincode", "")
+        })
+    return result
+
+
+def location_search(query):
+    q = (query or "").strip()
+    if len(q) < 2:
+        return []
+
+    postal = postal_lookup(q)
+    results = []
+
+    # Postal result is authoritative for Post Office/PIN identity.
+    # Geocoding is used only to obtain coordinates because PIN data does
+    # not itself provide a latitude/longitude pair.
+    for office in postal[:12]:
+        geo_query = ", ".join(x for x in [
+            office["post_office"], office["district"], office["state"], office["pincode"]
+        ] if x)
+        try:
+            geo = geocode_india(geo_query, limit=1)
+        except Exception:
+            geo = []
+        if not geo:
+            # Fallback to district/state, still without inventing coordinates.
+            try:
+                geo = geocode_india(
+                    ", ".join(x for x in [office["district"], office["state"]] if x),
+                    limit=1
+                )
+            except Exception:
+                geo = []
+        if not geo:
+            continue
+        g = geo[0]
+        results.append({
+            "display_name": f'{office["post_office"]}, {office["district"]}, {office["state"]} - {office["pincode"]}',
+            "city": office["post_office"],
+            "district": office["district"],
+            "state": office["state"],
+            "pincode": office["pincode"],
+            "country": "India",
+            "post_office": office["post_office"],
+            "branch_type": office["branch_type"],
+            "delivery_status": office["delivery_status"],
+            "latitude": g["latitude"],
+            "longitude": g["longitude"]
+        })
+
+    if results:
+        # Remove duplicate coordinates/records while preserving order.
+        seen = set()
+        unique = []
+        for item in results:
+            key = (item["post_office"], item["pincode"], item["latitude"], item["longitude"])
+            if key not in seen:
+                seen.add(key)
+                unique.append(item)
+        return unique[:12]
+
+    # City/place-name search: Nominatim is a fallback only for names that
+    # are not returned as Post Offices. This makes normal city names work.
+    try:
+        return geocode_india(q, limit=8)
+    except Exception:
+        return []
 
 # ============================================================
 # ROUTES
@@ -657,7 +649,7 @@ def home():
         "success": True,
         "service": "Hindi Panchang & Kundali API",
         "status": "online",
-        "version": "2.0",
+        "version": "2.1",
         "endpoints": [
             "/health",
             "/api/full-panchang-hindi?date=YYYY-MM-DD&city=Ujjain&lat=23.1765&lon=75.7885",
@@ -826,7 +818,7 @@ def location_api():
         if len(q) < 2:
             return jsonify({
                 "success": False,
-                "error": "Enter city or pincode"
+                "error": "Enter a valid Indian PIN, Post Office or City name"
             }), 400
 
         return jsonify({
