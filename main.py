@@ -157,7 +157,6 @@ def parse_date_time(date_str, time_str):
     return IST.localize(dt.datetime(y, m, d, hh, mm, ss))
 
 def parse_location(source):
-    # NEVER silently use Ujjain when a caller supplied an invalid location.
     city = (source.get("city") or "").strip()
     lat_raw = source.get("lat")
     lon_raw = source.get("lon")
@@ -172,7 +171,7 @@ def parse_location(source):
             x = matches[0]
             return x["display_name"], x["latitude"], x["longitude"]
         raise ValueError("Location not found. Select a valid Indian PIN/Post Office/City.")
-    raise ValueError("Location is required")
+    return DEFAULT_CITY, DEFAULT_LAT, DEFAULT_LON
 
 def degree_text(lon):
     local = lon % 30.0
@@ -204,9 +203,6 @@ def sidereal_position(jd, planet_id, with_speed=True):
         flags |= swe.FLG_SPEED
     pos, _ = swe.calc_ut(jd, planet_id, flags)
     return normalize(pos[0]), pos[3]
-
-def safe_date_text(value):
-    return value.strftime("%d-%m-%Y")
 
 # ============================================================
 # PANCHANG HELPERS
@@ -293,8 +289,6 @@ def panchang_for_date(date_str, city, lat, lon):
     sun_rashi_idx = rashi_index(sun_lon)
     moon_rashi_idx = rashi_index(moon_lon)
 
-    # This preserves the original project's simple month convention.
-    # It is not a full drik month calculation.
     vikram = y + 57
     shaka = y - 78
     kali = y + 3101
@@ -311,9 +305,6 @@ def panchang_for_date(date_str, city, lat, lon):
         7: "हेमंत", 8: "हेमंत", 9: "शिशिर", 10: "शिशिर"
     }
 
-    # Ishta Kaal is traditionally sunrise-based. We expose the raw
-    # approximate clock value here; a full traditional ghati calculation
-    # can be added later without changing the API structure.
     ishta_kaal = "--"
     if sunrise_dt:
         noon_dt = IST.localize(dt.datetime(y, m, d, 12, 0))
@@ -395,11 +386,9 @@ def calculate_houses(jd, lat, lon):
             jd, lat, lon, b"P", swe.FLG_SIDEREAL
         )
         asc = normalize(ascmc[0])
-        # houses_ex with sidereal flag returns sidereal cusps.
         cusp_list = [normalize(cusps[i]) for i in range(12)]
         return asc, cusp_list
     except Exception:
-        # Fallback preserving compatibility with older pyswisseph builds.
         cusps, ascmc = swe.houses(jd, lat, lon, b"P")
         ayan = swe.get_ayanamsa_ut(jd)
         asc = normalize(ascmc[0] - ayan)
@@ -407,13 +396,10 @@ def calculate_houses(jd, lat, lon):
         return asc, cusp_list
 
 def house_from_equal_whole_sign(lon, asc_lon):
-    # North-Indian Vedic chart is commonly represented as whole-sign houses:
-    # the Lagna rashi is house 1, next rashi house 2, etc.
     return ((rashi_index(lon) - rashi_index(asc_lon)) % 12) + 1
 
 def manglik_status(mars_rashi, asc_rashi):
     house = ((mars_rashi - asc_rashi) % 12) + 1
-    # Common Lagna-based Manglik convention: 1, 4, 7, 8, 12.
     is_manglik = house in [1, 4, 7, 8, 12]
     return {
         "is_manglik": is_manglik,
@@ -425,7 +411,6 @@ def manglik_status(mars_rashi, asc_rashi):
 # VIMSHOTTARI DASHA
 # ============================================================
 def add_years(base_date, years):
-    # Tropical Gregorian calendar year fraction used only for dasha display.
     days = years * 365.2425
     return base_date + dt.timedelta(days=days)
 
@@ -504,7 +489,6 @@ POSTAL_API = "https://api.postalpincode.in"
 NOMINATIM_API = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "HindiPanchang-Kundali/2.1"
 
-
 def http_json(url, timeout=12):
     req = urllib.request.Request(url, headers={
         "User-Agent": USER_AGENT,
@@ -512,7 +496,6 @@ def http_json(url, timeout=12):
     })
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
-
 
 def geocode_india(query, limit=8):
     params = urllib.parse.urlencode({
@@ -541,9 +524,7 @@ def geocode_india(query, limit=8):
         })
     return result
 
-
 def postal_lookup(query):
-    """Return Indian Post Office records for PIN or Post Office name."""
     q = (query or "").strip()
     if not q:
         return []
@@ -576,7 +557,6 @@ def postal_lookup(query):
         })
     return result
 
-
 def location_search(query):
     q = (query or "").strip()
     if len(q) < 2:
@@ -585,9 +565,6 @@ def location_search(query):
     postal = postal_lookup(q)
     results = []
 
-    # Postal result is authoritative for Post Office/PIN identity.
-    # Geocoding is used only to obtain coordinates because PIN data does
-    # not itself provide a latitude/longitude pair.
     for office in postal[:12]:
         geo_query = ", ".join(x for x in [
             office["post_office"], office["district"], office["state"], office["pincode"]
@@ -597,7 +574,6 @@ def location_search(query):
         except Exception:
             geo = []
         if not geo:
-            # Fallback to district/state, still without inventing coordinates.
             try:
                 geo = geocode_india(
                     ", ".join(x for x in [office["district"], office["state"]] if x),
@@ -623,7 +599,6 @@ def location_search(query):
         })
 
     if results:
-        # Remove duplicate coordinates/records while preserving order.
         seen = set()
         unique = []
         for item in results:
@@ -633,8 +608,6 @@ def location_search(query):
                 unique.append(item)
         return unique[:12]
 
-    # City/place-name search: Nominatim is a fallback only for names that
-    # are not returned as Post Offices. This makes normal city names work.
     try:
         return geocode_india(q, limit=8)
     except Exception:
@@ -649,14 +622,7 @@ def home():
         "success": True,
         "service": "Hindi Panchang & Kundali API",
         "status": "online",
-        "version": "2.1",
-        "endpoints": [
-            "/health",
-            "/api/full-panchang-hindi?date=YYYY-MM-DD&city=Ujjain&lat=23.1765&lon=75.7885",
-            "/api/generate-kundali?date=YYYY-MM-DD&time=HH:MM&city=Ujjain&lat=23.1765&lon=75.7885",
-            "/api/location?q=Ujjain",
-            "/api/dasha?date=YYYY-MM-DD&time=HH:MM&lat=23.1765&lon=75.7885"
-        ]
+        "version": "2.1"
     })
 
 @app.get("/health")
@@ -710,7 +676,6 @@ def generate_kundali():
         asc_lon, cusp_list = calculate_houses(jd, lat, lon)
         asc_rashi = rashi_index(asc_lon)
 
-        # Whole-sign house placement for the North Indian Vedic chart.
         houses = []
         for house_num in range(1, 13):
             sign_idx = (asc_rashi + house_num - 1) % 12
@@ -733,7 +698,6 @@ def generate_kundali():
         nak_idx, nak_name, nak_pada, nak_lord = nakshatra_info(moon_lon)
         moon_rashi = rashi_index(moon_lon)
 
-        # Birth Panchang is calculated for the birth date and exact location.
         panchang = panchang_for_date(date_str, city, lat, lon)["data"]
 
         mars_rashi = rashi_index(planet_data["मंगल"]["longitude"])
@@ -749,10 +713,6 @@ def generate_kundali():
         }
 
         dasha = calculate_vimshottari(birth_dt, moon_lon)
-
-        # Paya convention based on Janma Nakshatra/Rashi.
-        # Silver/Gem/Gold/Iron is exposed as a separate field so the UI
-        # can display it without changing the rest of the response.
         paya_map = {0: "स्वर्ण", 1: "रजत", 2: "ताम्र", 3: "लोह"}
         paya = paya_map.get(moon_rashi % 4, "रजत")
 
