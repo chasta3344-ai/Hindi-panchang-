@@ -289,8 +289,7 @@ def sidereal_position(jd, planet_id, with_speed=True):
 def calculate_lunar_months(sun_lon, moon_lon):
     """
     प्रामाणिक द्रिक पंचांग और सूर्य सिद्धांत के अनुसार 
-    सूर्य और चंद्रमा की स्थिति (Sun-Moon Elongation) से 
-    सटीक अमांत (Amanta) और पूर्णिमान्त (Purnimanta) मास की गणना।
+    सूर्य और चंद्रमा की स्थिति से सटीक अमांत और पूर्णिमान्त मास की गणना।
     """
     sun_rashi = int(sun_lon / 30.0) % 12
     amanta_idx = sun_rashi
