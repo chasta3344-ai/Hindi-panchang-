@@ -283,33 +283,28 @@ def sidereal_position(jd, planet_id, with_speed=True):
     return normalize(pos[0]), pos[3]
 
 # ============================================================
-# PERFECT TRADITIONAL CHANDRA-MASA CALCULATION (AMANTA & PURNIMANTA)
-# Ensures both months always move forward correctly without reversing
+# PURNIMANTA MONTH CALCULATION (Changes strictly after Purnima)
 # ============================================================
 
-def calculate_lunar_months(sun_lon, moon_lon):
+def calculate_purnimanta_month(sun_lon, moon_lon):
     """
-    सटीक पारंपरिक नियम:
-    - सूर्य की संक्रांति के आधार पर आधार मास (Base Month) तय होता है।
-    - अमांत मास: अमावस्या के बाद (शुक्ल पक्ष प्रतिपदा/द्वितीया से) नया महीना बनता है।
-    - पूर्णिमान्त मास: पूर्णिमा के बाद (कृष्ण पक्ष प्रतिपदा/द्वितीया से) नया महीना बनता है (हमेशा अमांत से 1 कदम आगे)।
+    पूर्णिमान्त मास की गणना:
+    सूर्य की संक्रांति (Solar Ingress) और चंद्र-सूर्य की कोणीय दूरी (Elongation) 
+    के आधार पर पूर्णिमा (15वीं तिथि) के तुरंत बाद नया महीना बदल जाता है।
     """
     sun_rashi = int(sun_lon / 30.0) % 12
     angle_diff = normalize(moon_lon - sun_lon)
-    tithi_deg = angle_diff / 12.0  # 0 से 30 तिथियाँ (0=अमावस्या, 15=पूर्णिमा)
+    tithi_deg = angle_diff / 12.0  # 0 से 30 तिथियाँ (15 = पूर्णिमा)
     
-    # मेष संक्रांति (0) से चैत्र (0) शुरू होता है। सूर्य की राशि सीधे अमांत मास का आधार है।
-    # जब तक अमावस्या पार नहीं होती, अमांत वही रहता है। शुक्ल पक्ष (0 से 15) शुरू होते ही अमांत नया हो जाता है।
-    if 0 <= tithi_deg < 15:
-        amanta_idx = sun_rashi
+    base_idx = sun_rashi
+    
+    # पूर्णिमा (15वीं तिथि) बीतते ही (यानी tithi_deg >= 15 होने पर) नया महीना शुरू हो जाता है
+    if tithi_deg >= 15:
+        purnimant_idx = (base_idx + 1) % 12
     else:
-        # कृष्ण पक्ष में अमांत पिछला ही रहता है, और पूर्णिमान्त आगे बढ़ जाता है
-        amanta_idx = (sun_rashi - 1) % 12
+        purnimant_idx = base_idx
 
-    # पूर्णिमान्त हमेशा अमांत से ठीक 1 महीना आगे (अगला चंद्र मास) चलता है
-    purnimant_idx = (amanta_idx + 1) % 12
-
-    return HINDI_MONTHS[purnimant_idx], HINDI_MONTHS[amanta_idx]
+    return HINDI_MONTHS[purnimant_idx]
 
 # ============================================================
 # PANCHANG
@@ -421,7 +416,8 @@ def panchang_for_date(date_str, city, lat, lon):
         pala = int((minutes % 24) * 2.5)
         ishta_kaal = f"{ghati} घटी {pala} पल"
 
-    maah_purnimant, maah_amanta = calculate_lunar_months(sun_lon, moon_lon)
+    # केवल पूर्णिमान्त मास की गणना (अमांत को हटा दिया गया है)
+    maah_purnimant = calculate_purnimanta_month(sun_lon, moon_lon)
 
     return {
         "success": True,
@@ -452,7 +448,6 @@ def panchang_for_date(date_str, city, lat, lon):
                 "ayan": ayan,
                 "ritu": ritu_map.get(sun_rashi_idx, "--"),
                 "maah_purnimant": maah_purnimant,
-                "maah_amanta": maah_amanta,
                 "ishta_kaal": ishta_kaal
             },
             "timings": {
