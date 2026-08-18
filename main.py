@@ -284,33 +284,33 @@ def sidereal_position(jd, planet_id, with_speed=True):
 
 # ============================================================
 # EXACT TRADITIONAL CHANDRA-MASA CALCULATION (AMANTA & PURNIMANTA)
+# Based strictly on Tithi transition post-Purnima and post-Amavasya
 # ============================================================
 
 def calculate_lunar_months(sun_lon, moon_lon):
     """
-    सूर्य की संक्रांति (Solar Ingress) और चंद्र-सूर्य की वास्तविक युति 
-    (New Moon / Amavasya boundaries) के आधार पर अकाट्य अमांत और पूर्णिमान्त मास।
+    आपके सटीक निर्देशानुसार:
+    - पूर्णिमान्त मास: पूर्णिमा के तुरंत बाद (कृष्ण पक्ष शुरू होते ही, चाहे प्रतिपदा हो या क्षय होकर द्वितीया) नया महीना बदल जाता है।
+    - अमांत मास: अमावस्या के तुरंत बाद (शुक्ल पक्ष शुरू होते ही, चाहे प्रतिपदा हो या क्षय होकर द्वितीया) नया महीना बदल जाता है।
     """
     sun_rashi = int(sun_lon / 30.0) % 12
     angle_diff = normalize(moon_lon - sun_lon)
-    tithi_deg = angle_diff / 12.0  # 0 से 30 तिथियों का चक्र
+    tithi_deg = angle_diff / 12.0  # 0 से 30 तिथियों का चक्र (0=अमावस्या, 15=पूर्णिमा)
     
-    # पारंपरिक द्रिक पंचांग के अनुसार:
-    # जब सूर्य जिस राशि में होता है, उस सौर मास से मुख्य अमांत मास तय होता है।
-    # मेष संक्रांति पर चैत्र (0), वृषभ पर वैशाख (1)... सिंह पर श्रावण (4) आदि।
-    amanta_idx = sun_rashi
+    base_idx = sun_rashi
     
-    # यदि कृष्ण पक्ष चल रहा है (त Elogation के अनुसार), 
-    # तो पूर्णिमान्त मास हमेशा अगला (अगला चंद्र मास) होता है।
-    # और अमांत मास की सटीकता सुनिश्चित करने के लिए चंद्र कला का समायोजन:
+    # पूर्णिमान्त का नियम: पूर्णिमा (15वीं तिथि) बीतते ही (यानी tithi_deg >= 15 होने पर) अगला महीना शुरू हो जाता है
     if tithi_deg >= 15:
-        purnimant_idx = (sun_rashi + 1) % 12
-        # कृष्ण पक्ष के उत्तरार्ध में अमांत भी अगले महीने में प्रवेश कर जाता है यदि अमावस्या निकट हो
-        if tithi_deg >= 27:  # अमावस्या के बहुत करीब (चतुर्दशी / अमावस्या)
-            amanta_idx = (sun_rashi + 1) % 12
+        purnimant_idx = (base_idx + 1) % 12
     else:
-        purnimant_idx = sun_rashi
-        amanta_idx = sun_rashi
+        purnimant_idx = base_idx
+        
+    # अमांत का नियम: अमावस्या (0वीं/30वीं तिथि) बीतते ही (यानी tithi_deg < 15, यानी शुक्ल पक्ष में) अगला महीना शुरू हो जाता है
+    # चूँकि 0 से 15 तक शुक्ल पक्ष (अमावस्या के बाद का काल) है, अतः अमांत इस दौरान नया महीना दिखाता है।
+    if 0 <= tithi_deg < 15:
+        amanta_idx = base_idx
+    else:
+        amanta_idx = (base_idx - 1) % 12
 
     return HINDI_MONTHS[purnimant_idx], HINDI_MONTHS[amanta_idx]
 
