@@ -933,6 +933,11 @@ def panchang_for_date(
                         (sun_rashi_idx + 1) % 12
                     ],
 
+                "maah_amanta":
+                    HINDI_MONTHS[
+                        sun_rashi_idx % 12
+                    ],
+
                 "ishta_kaal":
                     ishta_kaal
             },
