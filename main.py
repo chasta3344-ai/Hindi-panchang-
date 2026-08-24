@@ -2346,7 +2346,7 @@ def all_transits():
                 x["timestamp"]
         )
 
-        return jsonify({
+        response = jsonify({
             "success": True,
 
             "updated_at":
@@ -2371,6 +2371,10 @@ def all_transits():
                     planets
             }
         })
+
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        return response
 
     except Exception as e:
         return jsonify({
