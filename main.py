@@ -742,6 +742,116 @@ def get_panchang():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ============================================================
+# LIVE ALL-PLANET TRANSITS
+# ============================================================
+
+def _utc_jd(moment):
+    if moment.tzinfo is None:
+        moment = pytz.utc.localize(moment)
+    return swe.julday(
+        moment.year, moment.month, moment.day,
+        moment.hour + moment.minute / 60.0 + moment.second / 3600.0
+    )
+
+def _transit_position(jd, planet_name):
+    swe.set_sid_mode(swe.SIDM_LAHIRI)
+    if planet_name == "केतु":
+        rahu_lon, _ = sidereal_position(jd, swe.MEAN_NODE)
+        return normalize(rahu_lon + 180.0), -1.0
+    return sidereal_position(jd, PLANET_IDS[planet_name])
+
+def _transit_state(moment, planet_name):
+    lon, speed = _transit_position(_utc_jd(moment), planet_name)
+    return rashi_index(lon), lon, speed
+
+def _refine_transit(start, end, planet_name, old_sign):
+    # Binary search for the first instant after a rashi boundary.
+    for _ in range(26):
+        mid = start + (end - start) / 2
+        sign, _, _ = _transit_state(mid, planet_name)
+        if sign == old_sign:
+            start = mid
+        else:
+            end = mid
+    return end
+
+def _collect_transits(start, end, step_hours=2):
+    events = []
+    for planet_name in PLANET_ORDER:
+        cursor = start
+        old_sign, _, _ = _transit_state(cursor, planet_name)
+        while cursor < end:
+            nxt = min(cursor + dt.timedelta(hours=step_hours), end)
+            new_sign, _, speed = _transit_state(nxt, planet_name)
+            if new_sign != old_sign:
+                when = _refine_transit(cursor, nxt, planet_name, old_sign)
+                after_sign, _, after_speed = _transit_state(when + dt.timedelta(seconds=2), planet_name)
+                events.append({
+                    "planet": planet_name,
+                    "from_rashi": RASHI_NAMES[old_sign],
+                    "to_rashi": RASHI_NAMES[after_sign],
+                    "date": when.astimezone(IST).isoformat(),
+                    "transit_date": when.astimezone(IST).strftime("%Y-%m-%d"),
+                    "transit_time": when.astimezone(IST).strftime("%H:%M:%S"),
+                    "motion": "वक्री" if after_speed < 0 else "मार्गी",
+                    "timestamp": when.timestamp()
+                })
+                old_sign = after_sign
+                cursor = when + dt.timedelta(seconds=5)
+            else:
+                cursor = nxt
+    events.sort(key=lambda x: x["timestamp"])
+    return events
+
+def _current_transit_positions(now):
+    rows = []
+    for planet_name in PLANET_ORDER:
+        sign_idx, lon, speed = _transit_state(now, planet_name)
+        sign_degree = lon % 30.0
+        degree = int(sign_degree)
+        minute = int((sign_degree - degree) * 60)
+        nak_idx, nak_name, nak_pada, _, _ = nakshatra_info(lon)
+        rows.append({
+            "planet": planet_name,
+            "rashi": RASHI_NAMES[sign_idx],
+            "degree": f"{degree}° {minute:02d}'",
+            "nakshatra": nak_name,
+            "pada": nak_pada,
+            "motion": "वक्री" if speed < 0 else "मार्गी"
+        })
+    return rows
+
+@app.get("/api/all-transits")
+def all_transits():
+    try:
+        # City is accepted for compatibility with the Blogger page; sidereal
+        # planetary ingress is geocentric and does not require location.
+        now = dt.datetime.now(pytz.utc)
+        past_events = _collect_transits(
+            now - dt.timedelta(days=14), now, step_hours=2
+        )
+        future_events = _collect_transits(
+            now, now + dt.timedelta(days=14), step_hours=2
+        )
+
+        past = list(reversed(past_events[-3:]))
+        future = future_events[:3]
+
+        return jsonify({
+            "success": True,
+            "updated_at": now.astimezone(IST).isoformat(),
+            "timezone": "Asia/Kolkata",
+            "data": {
+                "past": past,
+                "current": _current_transit_positions(now),
+                "future": future
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route("/api/generate-kundali", methods=["GET", "POST"])
 def generate_kundali():
     try:
