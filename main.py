@@ -777,33 +777,50 @@ def _refine_transit(start, end, planet_name, old_sign):
             end = mid
     return end
 
+def _collect_transits_for_planet(start, end, planet_name, step_hours=24):
+    events = []
+    cursor = start
+    old_sign, _, _ = _transit_state(cursor, planet_name)
+
+    while cursor < end:
+        nxt = min(cursor + dt.timedelta(hours=step_hours), end)
+        new_sign, _, _ = _transit_state(nxt, planet_name)
+
+        if new_sign != old_sign:
+            when = _refine_transit(cursor, nxt, planet_name, old_sign)
+            after_sign, _, after_speed = _transit_state(
+                when + dt.timedelta(seconds=2), planet_name
+            )
+            events.append({
+                "planet": planet_name,
+                "from_rashi": RASHI_NAMES[old_sign],
+                "to_rashi": RASHI_NAMES[after_sign],
+                "date": when.astimezone(IST).isoformat(),
+                "transit_date": when.astimezone(IST).strftime("%Y-%m-%d"),
+                "transit_time": when.astimezone(IST).strftime("%H:%M:%S"),
+                "motion": "वक्री" if after_speed < 0 else "मार्गी",
+                "timestamp": when.timestamp()
+            })
+            old_sign = after_sign
+            cursor = when + dt.timedelta(seconds=5)
+        else:
+            cursor = nxt
+
+    events.sort(key=lambda x: x["timestamp"])
+    return events
+
+
 def _collect_transits(start, end, step_hours=2):
     events = []
     for planet_name in PLANET_ORDER:
-        cursor = start
-        old_sign, _, _ = _transit_state(cursor, planet_name)
-        while cursor < end:
-            nxt = min(cursor + dt.timedelta(hours=step_hours), end)
-            new_sign, _, speed = _transit_state(nxt, planet_name)
-            if new_sign != old_sign:
-                when = _refine_transit(cursor, nxt, planet_name, old_sign)
-                after_sign, _, after_speed = _transit_state(when + dt.timedelta(seconds=2), planet_name)
-                events.append({
-                    "planet": planet_name,
-                    "from_rashi": RASHI_NAMES[old_sign],
-                    "to_rashi": RASHI_NAMES[after_sign],
-                    "date": when.astimezone(IST).isoformat(),
-                    "transit_date": when.astimezone(IST).strftime("%Y-%m-%d"),
-                    "transit_time": when.astimezone(IST).strftime("%H:%M:%S"),
-                    "motion": "वक्री" if after_speed < 0 else "मार्गी",
-                    "timestamp": when.timestamp()
-                })
-                old_sign = after_sign
-                cursor = when + dt.timedelta(seconds=5)
-            else:
-                cursor = nxt
+        events.extend(
+            _collect_transits_for_planet(
+                start, end, planet_name, step_hours=step_hours
+            )
+        )
     events.sort(key=lambda x: x["timestamp"])
     return events
+
 
 def _current_transit_positions(now):
     rows = []
@@ -823,30 +840,80 @@ def _current_transit_positions(now):
         })
     return rows
 
+
+# Search range and scan interval are intentionally different for each planet.
+# Slow planets need a longer calendar range; the Moon needs a much finer scan.
+_TRANSIT_SEARCH = {
+    "सूर्य":  {"days": 180,   "step_hours": 12},
+    "चन्द्र": {"days": 20,    "step_hours": 2},
+    "मंगल":  {"days": 1200,  "step_hours": 24},
+    "बुध":   {"days": 240,   "step_hours": 12},
+    "गुरु":  {"days": 4500,  "step_hours": 72},
+    "शुक्र": {"days": 500,   "step_hours": 12},
+    "शनि":  {"days": 15000, "step_hours": 168},
+    "राहु":  {"days": 3000,  "step_hours": 72},
+    "केतु":  {"days": 3000,  "step_hours": 72},
+}
+
+
+def _three_transits_each_side(now, planet_name):
+    cfg = _TRANSIT_SEARCH[planet_name]
+    days = cfg["days"]
+    step_hours = cfg["step_hours"]
+
+    past_events = _collect_transits_for_planet(
+        now - dt.timedelta(days=days),
+        now,
+        planet_name,
+        step_hours=step_hours
+    )
+    future_events = _collect_transits_for_planet(
+        now,
+        now + dt.timedelta(days=days),
+        planet_name,
+        step_hours=step_hours
+    )
+
+    return {
+        "past": list(reversed(past_events[-3:])),
+        "future": future_events[:3]
+    }
+
+
 @app.get("/api/all-transits")
 def all_transits():
     try:
-        # City is accepted for compatibility with the Blogger page; sidereal
-        # planetary ingress is geocentric and does not require location.
         now = dt.datetime.now(pytz.utc)
-        past_events = _collect_transits(
-            now - dt.timedelta(days=14), now, step_hours=2
-        )
-        future_events = _collect_transits(
-            now, now + dt.timedelta(days=14), step_hours=2
-        )
+        current_rows = _current_transit_positions(now)
+        current_by_planet = {row["planet"]: row for row in current_rows}
 
-        past = list(reversed(past_events[-3:]))
-        future = future_events[:3]
+        planets = {}
+        all_past = []
+        all_future = []
+
+        for planet_name in PLANET_ORDER:
+            sides = _three_transits_each_side(now, planet_name)
+            planets[planet_name] = {
+                "past": sides["past"],
+                "current": current_by_planet[planet_name],
+                "future": sides["future"]
+            }
+            all_past.extend(sides["past"])
+            all_future.extend(sides["future"])
+
+        # Compatibility fields are retained for existing Blogger/API clients.
+        all_past.sort(key=lambda x: x["timestamp"], reverse=True)
+        all_future.sort(key=lambda x: x["timestamp"])
 
         return jsonify({
             "success": True,
             "updated_at": now.astimezone(IST).isoformat(),
             "timezone": "Asia/Kolkata",
             "data": {
-                "past": past,
-                "current": _current_transit_positions(now),
-                "future": future
+                "past": all_past,
+                "current": current_rows,
+                "future": all_future,
+                "planets": planets
             }
         })
     except Exception as e:
