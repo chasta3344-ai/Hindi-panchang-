@@ -174,8 +174,6 @@ HINDI_MONTHS = [
     "मार्गशीर्ष", "पौष", "माघ", "फाल्गुन"
 ]
 
-# IMPORTANT:
-# Backend internal spelling remains "चंद्र".
 PLANET_ORDER = [
     "सूर्य", "चंद्र", "मंगल", "बुध",
     "गुरु", "शुक्र", "शनि", "राहु", "केतु"
@@ -319,7 +317,6 @@ def rashi_index(lon):
 
 def nakshatra_info(lon):
     span = 360.0 / 27.0
-
     normalized_lon = normalize(lon)
 
     idx = min(
@@ -327,9 +324,7 @@ def nakshatra_info(lon):
         int(normalized_lon / span)
     )
 
-    within = normalized_lon - (
-        idx * span
-    )
+    within = normalized_lon - (idx * span)
 
     pada = min(
         4,
@@ -349,11 +344,7 @@ def nakshatra_info(lon):
     )
 
 
-def sidereal_position(
-    jd,
-    planet_id,
-    with_speed=True
-):
+def sidereal_position(jd, planet_id, with_speed=True):
     flags = swe.FLG_SIDEREAL
 
     if with_speed:
@@ -372,30 +363,18 @@ def sidereal_position(
 # PURNIMANTA MONTH
 # ============================================================
 
-def calculate_purnimanta_month(
-    sun_lon,
-    moon_lon
-):
+def calculate_purnimanta_month(sun_lon, moon_lon):
     sun_rashi = int(sun_lon / 30.0) % 12
-
-    angle_diff = normalize(
-        moon_lon - sun_lon
-    )
-
+    angle_diff = normalize(moon_lon - sun_lon)
     tithi_deg = angle_diff / 12.0
-
     base_idx = sun_rashi
 
     if tithi_deg >= 15:
-        purnimant_idx = (
-            base_idx + 1
-        ) % 12
+        purnimant_idx = (base_idx + 1) % 12
     else:
         purnimant_idx = base_idx
 
-    return HINDI_MONTHS[
-        purnimant_idx
-    ]
+    return HINDI_MONTHS[purnimant_idx]
 
 
 # ============================================================
@@ -407,31 +386,19 @@ def karana_name(index):
         return KARANA_FIXED[index]
 
     if 1 <= index <= 56:
-        return KARANA_MOVING[
-            (index - 1) % 7
-        ]
+        return KARANA_MOVING[(index - 1) % 7]
 
     return "--"
 
 
-def find_sun_event(
-    y,
-    m,
-    d,
-    lat,
-    lon,
-    rising=True
-):
+def find_sun_event(y, m, d, lat, lon, rising=True):
     observer = ephem.Observer()
-
     observer.lat = str(lat)
     observer.lon = str(lon)
 
     observer.date = (
         IST.localize(
-            dt.datetime(
-                y, m, d, 0, 5
-            )
+            dt.datetime(y, m, d, 0, 5)
         )
         .astimezone(pytz.utc)
     )
@@ -448,9 +415,7 @@ def find_sun_event(
         value_dt = value.datetime()
 
         if value_dt.tzinfo is None:
-            value_dt = pytz.utc.localize(
-                value_dt
-            )
+            value_dt = pytz.utc.localize(value_dt)
 
         return value_dt.astimezone(IST)
 
@@ -458,24 +423,14 @@ def find_sun_event(
         return None
 
 
-def moon_event(
-    y,
-    m,
-    d,
-    lat,
-    lon,
-    rising=True
-):
+def moon_event(y, m, d, lat, lon, rising=True):
     observer = ephem.Observer()
-
     observer.lat = str(lat)
     observer.lon = str(lon)
 
     observer.date = (
         IST.localize(
-            dt.datetime(
-                y, m, d, 0, 5
-            )
+            dt.datetime(y, m, d, 0, 5)
         )
         .astimezone(pytz.utc)
     )
@@ -492,9 +447,7 @@ def moon_event(
         value_dt = value.datetime()
 
         if value_dt.tzinfo is None:
-            value_dt = pytz.utc.localize(
-                value_dt
-            )
+            value_dt = pytz.utc.localize(value_dt)
 
         return value_dt.astimezone(IST)
 
@@ -502,10 +455,7 @@ def moon_event(
         return None
 
 
-def event_time_text(
-    value,
-    base_date
-):
+def event_time_text(value, base_date):
     if not value:
         return "--"
 
@@ -515,27 +465,104 @@ def event_time_text(
         else ""
     )
 
-    return (
-        suffix +
-        value.strftime("%I:%M %p")
-    )
+    return suffix + value.strftime("%I:%M %p")
 
 
-def panchang_for_date(
-    date_str,
-    city,
-    lat,
-    lon
-):
-    y, m, d = map(
-        int,
-        date_str.split("-")
-    )
+# ============================================================
+# ALL 8 MUHURTAS CALCULATION HELPER
+# ============================================================
+
+def calculate_all_muhurtas(sunrise_dt, sunset_dt):
+    if not sunrise_dt or not sunset_dt:
+        return {
+            "abhijeet_muhurta": "--",
+            "rahu_kaal": "--",
+            "gulika_kaal": "--",
+            "durmuhurt": "--",
+            "varjyam": "--",
+            "brahma_muhurta": "--",
+            "yamgand": "--",
+            "pradosha_kaal": "--"
+        }
+
+    weekday = sunrise_dt.weekday() # 0:Mon, 1:Tue, 2:Wed, 3:Thu, 4:Fri, 5:Sat, 6:Sun
+    day_duration = (sunset_dt - sunrise_dt).total_seconds()
+    day_part = day_duration / 8.0
+    day_muhurta_len = day_duration / 15.0
+
+    # 1. Abhijeet Muhurta: 8th Muhurta of the day (approx middle of day, ~48 mins)
+    abhijeet_start = sunrise_dt + dt.timedelta(seconds=6 * day_muhurta_len)
+    abhijeet_end = abhijeet_start + dt.timedelta(minutes=48)
+    abhijeet_str = f"{abhijeet_start.strftime('%I:%M %p')} - {abhijeet_end.strftime('%I:%M %p')}"
+
+    # 2. Rahu Kaal (Based on weekday parts 1-8)
+    rahu_parts = {0: 2, 1: 7, 2: 5, 3: 6, 4: 4, 5: 3, 6: 8} # Mon=2nd, Tue=7th, Wed=5th, Thu=6th, Fri=4th, Sat=3rd, Sun=8th
+    r_part = rahu_parts.get(weekday, 2)
+    rk_start = sunrise_dt + dt.timedelta(seconds=(r_part - 1) * day_part)
+    rk_end = rk_start + dt.timedelta(seconds=day_part)
+    rahu_str = f"{rk_start.strftime('%I:%M %p')} - {rk_end.strftime('%I:%M %p')}"
+
+    # 3. Gulika Kaal (Guliji)
+    gulika_parts = {0: 6, 1: 5, 2: 4, 3: 3, 4: 2, 5: 1, 6: 7}
+    g_part = gulika_parts.get(weekday, 6)
+    gk_start = sunrise_dt + dt.timedelta(seconds=(g_part - 1) * day_part)
+    gk_end = gk_start + dt.timedelta(seconds=day_part)
+    gulika_str = f"{gk_start.strftime('%I:%M %p')} - {gk_end.strftime('%I:%M %p')}"
+
+    # 4. Durmuhurtam
+    durmuhurt_parts = {
+        0: [8],
+        1: [1, 7],
+        2: [5],
+        3: [4, 6],
+        4: [2],
+        5: [3],
+        6: [4]
+    }
+    dm_list = durmuhurt_parts.get(weekday, [8])
+    dm_starts = [sunrise_dt + dt.timedelta(seconds=(p - 1) * day_muhurta_len) for p in dm_list]
+    dm_ends = [s + dt.timedelta(seconds=day_muhurta_len) for s in dm_starts]
+    dur_str = ", ".join([f"{s.strftime('%I:%M %p')} - {e.strftime('%I:%M %p')}" for s, e in zip(dm_starts, dm_ends)])
+
+    # 5. Varjyam
+    varjyam_start = sunrise_dt + dt.timedelta(seconds=day_duration * 0.6)
+    varjyam_end = varjyam_start + dt.timedelta(minutes=96)
+    varjyam_str = f"{varjyam_start.strftime('%I:%M %p')} - {varjyam_end.strftime('%I:%M %p')}"
+
+    # 6. Brahma Muhurta
+    bm_start = sunrise_dt - dt.timedelta(minutes=96)
+    bm_end = sunrise_dt - dt.timedelta(minutes=48)
+    brahma_str = f"{bm_start.strftime('%I:%M %p')} - {bm_end.strftime('%I:%M %p')}"
+
+    # 7. Yamagand
+    yamagand_part_map = {6: 4, 0: 5, 1: 3, 2: 2, 3: 1, 4: 7, 5: 6}
+    yg_part = yamagand_part_map.get(weekday, 5)
+    yg_start = sunrise_dt + dt.timedelta(seconds=(yg_part - 1) * day_muhurta_len)
+    yg_end = yg_start + dt.timedelta(seconds=day_muhurta_len)
+    yamgand_str = f"{yg_start.strftime('%I:%M %p')} - {yg_end.strftime('%I:%M %p')}"
+
+    # 8. Pradosha Kaal
+    pradosha_start = sunset_dt
+    pradosha_end = sunset_dt + dt.timedelta(minutes=120)
+    pradosha_str = f"{pradosha_start.strftime('%I:%M %p')} - {pradosha_end.strftime('%I:%M %p')}"
+
+    return {
+        "abhijeet_muhurta": abhijeet_str,
+        "rahu_kaal": rahu_str,
+        "gulika_kaal": gulika_str,
+        "durmuhurt": dur_str,
+        "varjyam": varjyam_str,
+        "brahma_muhurta": brahma_str,
+        "yamgand": yamgand_str,
+        "pradosha_kaal": pradosha_str
+    }
+
+
+def panchang_for_date(date_str, city, lat, lon):
+    y, m, d = map(int, date_str.split("-"))
 
     local_dt = IST.localize(
-        dt.datetime(
-            y, m, d, 12, 0
-        )
+        dt.datetime(y, m, d, 12, 0)
     )
 
     jd = get_julian_day(
@@ -688,6 +715,9 @@ def panchang_for_date(
         False
     )
 
+    # Get all 8 Muhurtas including Abhijeet, Rahu Kaal, Gulika, etc.
+    all_muhurtas = calculate_all_muhurtas(sunrise_dt, sunset_dt)
+
     ayan = (
         "उत्तरायण"
         if sun_rashi_idx in [
@@ -824,7 +854,17 @@ def panchang_for_date(
                     maah_purnimant,
 
                 "ishta_kaal":
-                    ishta_kaal
+                    ishta_kaal,
+
+                # All 8 Muhurtas Included Live
+                "abhijeet_muhurta": all_muhurtas["abhijeet_muhurta"],
+                "rahu_kaal": all_muhurtas["rahu_kaal"],
+                "gulika_kaal": all_muhurtas["gulika_kaal"],
+                "durmuhurt": all_muhurtas["durmuhurt"],
+                "varjyam": all_muhurtas["varjyam"],
+                "brahma_muhurta": all_muhurtas["brahma_muhurta"],
+                "yamgand": all_muhurtas["yamgand"],
+                "pradosha_kaal": all_muhurtas["pradosha_kaal"]
             },
 
             "timings": {
@@ -1731,7 +1771,7 @@ def home():
     return jsonify({
         "success": True,
         "service":
-            "Hindi Panchang & Kundali API",
+            "Hindi Panchang &amp; Kundali API",
         "status":
             "online",
         "version":
@@ -1793,15 +1833,6 @@ def get_panchang():
 def normalize_transit_planet_name(
     planet_name
 ):
-    """
-    Accept both:
-    चंद्र
-    चन्द्र
-
-    Internal backend key is always:
-    चंद्र
-    """
-
     aliases = {
         "चन्द्र": "चंद्र",
         "Chandra": "चंद्र",
@@ -1883,8 +1914,6 @@ def _transit_position(
         swe.SIDM_LAHIRI
     )
 
-    # CRITICAL FIX:
-    # "चन्द्र" becomes backend key "चंद्र".
     planet_name = (
         normalize_transit_planet_name(
             planet_name
@@ -2170,10 +2199,6 @@ def _current_transit_positions(
 
     return rows
 
-
-# Search range and scan interval.
-# IMPORTANT:
-# Internal key is "चंद्र", not "चन्द्र".
 
 _TRANSIT_SEARCH = {
     "सूर्य": {
