@@ -469,20 +469,20 @@ def event_time_text(value, base_date):
 
 
 # ============================================================
-# ALL 8 MUHURTAS CALCULATION HELPER
+# ALL 8 MUHURTAS CALCULATION (Matching Frontend Keys)
 # ============================================================
 
 def calculate_all_muhurtas(sunrise_dt, sunset_dt):
     if not sunrise_dt or not sunset_dt:
         return {
-            "abhijeet_muhurta": "--",
-            "rahu_kaal": "--",
-            "gulika_kaal": "--",
-            "durmuhurt": "--",
-            "varjyam": "--",
-            "brahma_muhurta": "--",
-            "yamgand": "--",
-            "pradosha_kaal": "--"
+            "abhijit_muhurta": "—",
+            "rahu_kal": "—",
+            "gulika_kal": "—",
+            "durmuhurt": "—",
+            "varjyam": "—",
+            "brahma_muhurta": "—",
+            "yamagand": "—",
+            "pradosh": "—"
         }
 
     weekday = sunrise_dt.weekday() # 0:Mon, 1:Tue, 2:Wed, 3:Thu, 4:Fri, 5:Sat, 6:Sun
@@ -490,26 +490,26 @@ def calculate_all_muhurtas(sunrise_dt, sunset_dt):
     day_part = day_duration / 8.0
     day_muhurta_len = day_duration / 15.0
 
-    # 1. Abhijeet Muhurta: 8th Muhurta of the day (approx middle of day, ~48 mins)
+    # 1. Abhijit Muhurta (approx middle of day, ~48 mins)
     abhijeet_start = sunrise_dt + dt.timedelta(seconds=6 * day_muhurta_len)
     abhijeet_end = abhijeet_start + dt.timedelta(minutes=48)
     abhijeet_str = f"{abhijeet_start.strftime('%I:%M %p')} - {abhijeet_end.strftime('%I:%M %p')}"
 
-    # 2. Rahu Kaal (Based on weekday parts 1-8)
-    rahu_parts = {0: 2, 1: 7, 2: 5, 3: 6, 4: 4, 5: 3, 6: 8} # Mon=2nd, Tue=7th, Wed=5th, Thu=6th, Fri=4th, Sat=3rd, Sun=8th
+    # 2. Rahu Kal
+    rahu_parts = {0: 2, 1: 7, 2: 5, 3: 6, 4: 4, 5: 3, 6: 8}
     r_part = rahu_parts.get(weekday, 2)
     rk_start = sunrise_dt + dt.timedelta(seconds=(r_part - 1) * day_part)
     rk_end = rk_start + dt.timedelta(seconds=day_part)
     rahu_str = f"{rk_start.strftime('%I:%M %p')} - {rk_end.strftime('%I:%M %p')}"
 
-    # 3. Gulika Kaal (Guliji)
+    # 3. Gulika Kal
     gulika_parts = {0: 6, 1: 5, 2: 4, 3: 3, 4: 2, 5: 1, 6: 7}
     g_part = gulika_parts.get(weekday, 6)
     gk_start = sunrise_dt + dt.timedelta(seconds=(g_part - 1) * day_part)
     gk_end = gk_start + dt.timedelta(seconds=day_part)
     gulika_str = f"{gk_start.strftime('%I:%M %p')} - {gk_end.strftime('%I:%M %p')}"
 
-    # 4. Durmuhurtam
+    # 4. Durmuhurt
     durmuhurt_parts = {
         0: [8],
         1: [1, 7],
@@ -541,20 +541,20 @@ def calculate_all_muhurtas(sunrise_dt, sunset_dt):
     yg_end = yg_start + dt.timedelta(seconds=day_muhurta_len)
     yamgand_str = f"{yg_start.strftime('%I:%M %p')} - {yg_end.strftime('%I:%M %p')}"
 
-    # 8. Pradosha Kaal
+    # 8. Pradosh Kal
     pradosha_start = sunset_dt
     pradosha_end = sunset_dt + dt.timedelta(minutes=120)
     pradosha_str = f"{pradosha_start.strftime('%I:%M %p')} - {pradosha_end.strftime('%I:%M %p')}"
 
     return {
-        "abhijeet_muhurta": abhijeet_str,
-        "rahu_kaal": rahu_str,
-        "gulika_kaal": gulika_str,
+        "abhijit_muhurta": abhijeet_str,
+        "rahu_kal": rahu_str,
+        "gulika_kal": gulika_str,
         "durmuhurt": dur_str,
         "varjyam": varjyam_str,
         "brahma_muhurta": brahma_str,
-        "yamgand": yamgand_str,
-        "pradosha_kaal": pradosha_str
+        "yamagand": yamgand_str,
+        "pradosh": pradosha_str
     }
 
 
@@ -715,8 +715,8 @@ def panchang_for_date(date_str, city, lat, lon):
         False
     )
 
-    # Get all 8 Muhurtas including Abhijeet, Rahu Kaal, Gulika, etc.
-    all_muhurtas = calculate_all_muhurtas(sunrise_dt, sunset_dt)
+    # Calculate all 8 Muhurtas for frontend keys
+    muhurtas = calculate_all_muhurtas(sunrise_dt, sunset_dt)
 
     ayan = (
         "उत्तरायण"
@@ -854,17 +854,19 @@ def panchang_for_date(date_str, city, lat, lon):
                     maah_purnimant,
 
                 "ishta_kaal":
-                    ishta_kaal,
+                    ishta_kaal
+            },
 
-                # All 8 Muhurtas Included Live
-                "abhijeet_muhurta": all_muhurtas["abhijeet_muhurta"],
-                "rahu_kaal": all_muhurtas["rahu_kaal"],
-                "gulika_kaal": all_muhurtas["gulika_kaal"],
-                "durmuhurt": all_muhurtas["durmuhurt"],
-                "varjyam": all_muhurtas["varjyam"],
-                "brahma_muhurta": all_muhurtas["brahma_muhurta"],
-                "yamgand": all_muhurtas["yamgand"],
-                "pradosha_kaal": all_muhurtas["pradosha_kaal"]
+            # Added under special_timings so JS findValue() can easily capture all 8 muhurtas
+            "special_timings": {
+                "abhijit_muhurta": muhurtas["abhijit_muhurta"],
+                "rahu_kal": muhurtas["rahu_kal"],
+                "gulika_kal": muhurtas["gulika_kal"],
+                "durmuhurt": muhurtas["durmuhurt"],
+                "varjyam": muhurtas["varjyam"],
+                "brahma_muhurta": muhurtas["brahma_muhurta"],
+                "yamagand": muhurtas["yamagand"],
+                "pradosh": muhurtas["pradosh"]
             },
 
             "timings": {
