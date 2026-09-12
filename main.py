@@ -2645,17 +2645,26 @@ def generate_kundali():
             )
         )
 
-        paya_map = {
-            0: "स्वर्ण",
-            1: "रजत",
-            2: "ताम्र",
-            3: "लोह"
+        # ========================================================
+        # NAKSHATRA JANMA PAYA - RULE B
+        # Strictly tied to the same Swiss Ephemeris Moon
+        # longitude / Nakshatra index used above.
+        # No Rashi-based calculation is used here.
+        # 1-5 Swarna, 6-15 Rajat, 16-19 Loha, 20-26 Tamra, 27 Swarna.
+        # ========================================================
+        NAKSHATRA_PAYA_BY_INDEX = {
+            0: "स्वर्ण", 1: "स्वर्ण", 2: "स्वर्ण", 3: "स्वर्ण", 4: "स्वर्ण",
+            5: "रजत", 6: "रजत", 7: "रजत", 8: "रजत", 9: "रजत",
+            10: "रजत", 11: "रजत", 12: "रजत", 13: "रजत", 14: "रजत",
+            15: "लौह", 16: "लौह", 17: "लौह", 18: "लौह",
+            19: "ताम्र", 20: "ताम्र", 21: "ताम्र", 22: "ताम्र",
+            23: "ताम्र", 24: "ताम्र", 25: "ताम्र",
+            26: "स्वर्ण"
         }
 
-        paya = paya_map.get(
-            moon_rashi % 4,
-            "रजत"
-        )
+        # nak_idx comes directly from nakshatra_info(moon_lon),
+        # the same Swiss Ephemeris Moon position used for Janma Nakshatra.
+        paya = NAKSHATRA_PAYA_BY_INDEX.get(nak_idx, "--")
 
         return jsonify({
             "success": True,
