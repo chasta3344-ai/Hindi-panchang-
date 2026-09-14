@@ -360,21 +360,27 @@ def sidereal_position(jd, planet_id, with_speed=True):
 
 
 # ============================================================
-# PURNIMANTA MONTH
+# PURNIMANTA MONTH (UPDATED & CORRECTED)
 # ============================================================
 
 def calculate_purnimanta_month(sun_lon, moon_lon):
-    sun_rashi = int(sun_lon / 30.0) % 12
+    sun_rashi = int(normalize(sun_lon) / 30.0) % 12
     angle_diff = normalize(moon_lon - sun_lon)
-    tithi_deg = angle_diff / 12.0
-    base_idx = sun_rashi
+    tithi_idx = int(angle_diff / 12.0)  # 0 to 29
 
-    if tithi_deg >= 15:
-        purnimant_idx = (base_idx + 1) % 12
+    # Standard Amanta base month aligns with sun_rashi:
+    # When Sun is in Leo (index 4), the Amanta month is Bhadrapada (index 5).
+    amanta_idx = (sun_rashi + 1) % 12
+
+    # In Purnimanta system:
+    # - Shukla Paksha (tithi 0 to 14): Same as Amanta month
+    # - Krishna Paksha (tithi 15 to 29): Starts the NEXT month
+    if tithi_idx >= 15:
+        purnimanta_idx = (amanta_idx + 1) % 12
     else:
-        purnimant_idx = base_idx
+        purnimanta_idx = amanta_idx
 
-    return HINDI_MONTHS[purnimant_idx]
+    return HINDI_MONTHS[purnimanta_idx]
 
 
 # ============================================================
@@ -485,12 +491,12 @@ def calculate_all_muhurtas(sunrise_dt, sunset_dt):
             "pradosh": "—"
         }
 
-    weekday = sunrise_dt.weekday() # 0:Mon, 1:Tue, 2:Wed, 3:Thu, 4:Fri, 5:Sat, 6:Sun
+    weekday = sunrise_dt.weekday()  # 0:Mon, 1:Tue, 2:Wed, 3:Thu, 4:Fri, 5:Sat, 6:Sun
     day_duration = (sunset_dt - sunrise_dt).total_seconds()
     day_part = day_duration / 8.0
     day_muhurta_len = day_duration / 15.0
 
-    # 1. Abhijit Muhurta (approx middle of day, ~48 mins)
+    # 1. Abhijit Muhurta
     abhijeet_start = sunrise_dt + dt.timedelta(seconds=6 * day_muhurta_len)
     abhijeet_end = abhijeet_start + dt.timedelta(minutes=48)
     abhijeet_str = f"{abhijeet_start.strftime('%I:%M %p')} - {abhijeet_end.strftime('%I:%M %p')}"
@@ -715,7 +721,6 @@ def panchang_for_date(date_str, city, lat, lon):
         False
     )
 
-    # Calculate all 8 Muhurtas for frontend keys
     muhurtas = calculate_all_muhurtas(sunrise_dt, sunset_dt)
 
     ayan = (
@@ -857,7 +862,6 @@ def panchang_for_date(date_str, city, lat, lon):
                     ishta_kaal
             },
 
-            # Added under special_timings so JS findValue() can easily capture all 8 muhurtas
             "special_timings": {
                 "abhijit_muhurta": muhurtas["abhijit_muhurta"],
                 "rahu_kal": muhurtas["rahu_kal"],
@@ -1292,1602 +1296,214 @@ def calculate_vimshottari(
 # LOCATION SEARCH
 # ============================================================
 
-POSTAL_API = (
-    "https://api.postalpincode.in"
-)
-
-NOMINATIM_API = (
-    "https://nominatim.openstreetmap.org/search"
-)
-
-USER_AGENT = (
-    "HindiPanchang-Kundali/2.1"
-)
+POSTAL_API = "https://api.postalpincode.in"
+NOMINATIM_API = "https://nominatim.openstreetmap.org/search"
+USER_AGENT = "HindiPanchang-Kundali/2.1"
 
 
-def http_json(
-    url,
-    timeout=12
-):
+def http_json(url, timeout=12):
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent":
-                USER_AGENT,
-
-            "Accept":
-                "application/json"
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json"
         }
     )
 
-    with urllib.request.urlopen(
-        req,
-        timeout=timeout
-    ) as response:
-        return json.loads(
-            response.read()
-            .decode("utf-8")
-        )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
-def geocode_india(
-    query,
-    limit=8
-):
+def geocode_india(query, limit=8):
     params = urllib.parse.urlencode({
-        "q":
-            query + ", India",
-
-        "format":
-            "jsonv2",
-
-        "addressdetails":
-            1,
-
-        "limit":
-            limit,
-
-        "countrycodes":
-            "in"
+        "q": query + ", India",
+        "format": "jsonv2",
+        "addressdetails": 1,
+        "limit": limit,
+        "countrycodes": "in"
     })
 
-    items = http_json(
-        NOMINATIM_API +
-        "?" +
-        params
-    )
-
+    items = http_json(NOMINATIM_API + "?" + params)
     result = []
 
     for item in items:
-        address = item.get(
-            "address",
-            {}
-        )
-
+        address = item.get("address", {})
         result.append({
-            "display_name":
-                item.get(
-                    "display_name",
-                    query
-                ),
-
-            "city":
-                (
-                    address.get("city")
-                    or
-                    address.get("town")
-                    or
-                    address.get("village")
-                    or
-                    address.get("municipality")
-                    or
-                    address.get("county")
-                    or
-                    query
-                ),
-
-            "district":
-                (
-                    address.get(
-                        "state_district"
-                    )
-                    or
-                    address.get("district")
-                    or
-                    address.get("county")
-                    or
-                    ""
-                ),
-
-            "state":
-                address.get(
-                    "state",
-                    ""
-                ),
-
-            "pincode":
-                address.get(
-                    "postcode",
-                    ""
-                ),
-
-            "country":
-                address.get(
-                    "country",
-                    "India"
-                ),
-
-            "latitude":
-                float(
-                    item["lat"]
-                ),
-
-            "longitude":
-                float(
-                    item["lon"]
-                )
+            "display_name": item.get("display_name", query),
+            "city": (
+                address.get("city")
+                or address.get("town")
+                or address.get("village")
+                or address.get("municipality")
+                or address.get("county")
+                or query
+            ),
+            "district": (
+                address.get("state_district")
+                or address.get("district")
+                or address.get("county")
+                or ""
+            ),
+            "state": address.get("state", ""),
+            "pincode": address.get("postcode", ""),
+            "country": address.get("country", "India"),
+            "latitude": float(item["lat"]),
+            "longitude": float(item["lon"])
         })
 
     return result
 
 
-def postal_lookup(
-    query
-):
-    q = (
-        query or ""
-    ).strip()
+def postal_lookup(query):
+    q = (query or "").strip()
 
     if not q:
         return []
 
-    if re.fullmatch(
-        r"\d{6}",
-        q
-    ):
-        url = (
-            f"{POSTAL_API}/pincode/{q}"
-        )
+    if re.fullmatch(r"\d{6}", q):
+        url = f"{POSTAL_API}/pincode/{q}"
     else:
-        url = (
-            f"{POSTAL_API}/postoffice/"
-            f"{urllib.parse.quote(q)}"
-        )
+        url = f"{POSTAL_API}/postoffice/{urllib.parse.quote(q)}"
 
     try:
-        payload = http_json(
-            url
-        )
-
+        payload = http_json(url)
     except Exception:
         return []
 
-    if (
-        not isinstance(
-            payload,
-            list
-        )
-        or
-        not payload
-    ):
+    if not isinstance(payload, list) or not payload:
         return []
 
     first = payload[0] or {}
 
-    if (
-        str(
-            first.get(
-                "Status",
-                ""
-            )
-        ).lower()
-        !=
-        "success"
-    ):
+    if str(first.get("Status", "")).lower() != "success":
         return []
 
-    offices = (
-        first.get(
-            "PostOffice"
-        )
-        or
-        []
-    )
-
+    offices = first.get("PostOffice") or []
     result = []
 
     for office in offices:
         result.append({
-            "post_office":
-                office.get(
-                    "Name",
-                    ""
-                ),
-
-            "branch_type":
-                office.get(
-                    "BranchType",
-                    ""
-                ),
-
-            "delivery_status":
-                office.get(
-                    "DeliveryStatus",
-                    ""
-                ),
-
-            "division":
-                office.get(
-                    "Division",
-                    ""
-                ),
-
-            "region":
-                office.get(
-                    "Region",
-                    ""
-                ),
-
-            "circle":
-                office.get(
-                    "Circle",
-                    ""
-                ),
-
-            "district":
-                office.get(
-                    "District",
-                    ""
-                ),
-
-            "state":
-                office.get(
-                    "State",
-                    ""
-                ),
-
-            "pincode":
-                office.get(
-                    "Pincode",
-                    ""
-                )
+            "post_office": office.get("Name", ""),
+            "branch_type": office.get("BranchType", ""),
+            "delivery_status": office.get("DeliveryStatus", ""),
+            "division": office.get("Division", ""),
+            "region": office.get("Region", ""),
+            "state": office.get("State", ""),
+            "district": office.get("District", ""),
+            "pincode": office.get("Pincode", "")
         })
 
     return result
 
 
-def location_search(
-    query
-):
-    q = (
-        query or ""
-    ).strip()
-
-    if len(q) < 2:
-        return []
-
-    postal = postal_lookup(q)
-
-    results = []
-
-    for office in postal[:12]:
-        geo_query = ", ".join(
-            x for x in [
-                office["post_office"],
-                office["district"],
-                office["state"],
-                office["pincode"]
-            ]
-            if x
-        )
-
-        try:
-            geo = geocode_india(
-                geo_query,
-                limit=1
-            )
-
-        except Exception:
-            geo = []
-
-        if not geo:
-            try:
-                geo = geocode_india(
-                    ", ".join(
-                        x for x in [
-                            office["district"],
-                            office["state"]
-                        ]
-                        if x
-                    ),
-                    limit=1
-                )
-
-            except Exception:
-                geo = []
-
-        if not geo:
-            continue
-
-        g = geo[0]
-
-        results.append({
-            "display_name":
-                f'{office["post_office"]}, '
-                f'{office["district"]}, '
-                f'{office["state"]} - '
-                f'{office["pincode"]}',
-
-            "city":
-                office[
-                    "post_office"
-                ],
-
-            "district":
-                office[
-                    "district"
-                ],
-
-            "state":
-                office[
-                    "state"
-                ],
-
-            "pincode":
-                office[
-                    "pincode"
-                ],
-
-            "country":
-                "India",
-
-            "post_office":
-                office[
-                    "post_office"
-                ],
-
-            "branch_type":
-                office[
-                    "branch_type"
-                ],
-
-            "delivery_status":
-                office[
-                    "delivery_status"
-                ],
-
-            "latitude":
-                g["latitude"],
-
-            "longitude":
-                g["longitude"]
-        })
-
-    if results:
-        seen = set()
-        unique = []
-
-        for item in results:
-            key = (
-                item["post_office"],
-                item["pincode"],
-                item["latitude"],
-                item["longitude"]
-            )
-
-            if key not in seen:
-                seen.add(key)
-                unique.append(item)
-
-        return unique[:12]
-
-    try:
-        return geocode_india(
-            q,
-            limit=8
-        )
-
-    except Exception:
-        return []
-
-
-def parse_location(
-    source
-):
-    city = (
-        source.get(
-            "city"
-        )
-        or
-        ""
-    ).strip()
-
-    lat_raw = source.get(
-        "lat"
-    )
-
-    lon_raw = source.get(
-        "lon"
-    )
-
-    if (
-        lat_raw not in (
-            None,
-            ""
-        )
-        and
-        lon_raw not in (
-            None,
-            ""
-        )
-    ):
-        try:
-            return (
-                city or DEFAULT_CITY,
-                float(lat_raw),
-                float(lon_raw)
-            )
-
-        except (
-            TypeError,
-            ValueError
-        ):
-            raise ValueError(
-                "Invalid latitude/longitude"
-            )
-
-    if city:
-        matches = location_search(
-            city
-        )
-
-        if matches:
-            x = matches[0]
-
-            return (
-                x["display_name"],
-                x["latitude"],
-                x["longitude"]
-            )
-
-        raise ValueError(
-            "Location not found. "
-            "Select a valid Indian "
-            "PIN/Post Office/City."
-        )
-
-    return (
-        DEFAULT_CITY,
-        DEFAULT_LAT,
-        DEFAULT_LON
-    )
-
-
 # ============================================================
-# ROUTES
+# API ROUTES
 # ============================================================
 
-@app.get("/")
-def home():
-    return jsonify({
-        "success": True,
-        "service":
-            "Hindi Panchang &amp; Kundali API",
-        "status":
-            "online",
-        "version":
-            "2.2"
-    })
-
-
-@app.get("/health")
-def health():
-    return jsonify({
-        "success": True,
-        "status": "healthy"
-    })
-
-
-@app.get(
-    "/api/full-panchang-hindi"
-)
-@app.get(
-    "/api/full-panchang-hindi-fix"
-)
-def get_panchang():
+@app.route("/api/full-panchang-hindi", methods=["GET"])
+def panchang_endpoint():
     try:
-        date_str = request.args.get(
-            "date"
-        )
-
-        city, lat, lon = parse_location(
-            request.args
-        )
-
+        date_str = request.args.get("date")
         if not date_str:
-            return jsonify({
-                "success": False,
-                "error":
-                    "Date is required"
-            }), 400
+            date_str = dt.datetime.now(IST).strftime("%Y-%m-%d")
 
-        return jsonify(
-            panchang_for_date(
-                date_str,
-                city,
-                lat,
-                lon
-            )
-        )
+        city = request.args.get("city", DEFAULT_CITY)
+        lat = float(request.args.get("lat", DEFAULT_LAT))
+        lon = float(request.args.get("lon", DEFAULT_LON))
 
+        data = panchang_for_date(date_str, city, lat, lon)
+        return jsonify(data)
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
-# ============================================================
-# LIVE ALL-PLANET TRANSITS
-# ============================================================
-
-def normalize_transit_planet_name(
-    planet_name
-):
-    aliases = {
-        "चन्द्र": "चंद्र",
-        "Chandra": "चंद्र",
-        "Moon": "चंद्र",
-        "moon": "चंद्र",
-
-        "Surya": "सूर्य",
-        "Sun": "सूर्य",
-        "sun": "सूर्य",
-
-        "Mangal": "मंगल",
-        "Mars": "मंगल",
-        "mars": "मंगल",
-
-        "Budh": "बुध",
-        "Mercury": "बुध",
-        "mercury": "बुध",
-
-        "Guru": "गुरु",
-        "Jupiter": "गुरु",
-        "jupiter": "गुरु",
-
-        "Shukra": "शुक्र",
-        "Venus": "शुक्र",
-        "venus": "शुक्र",
-
-        "Shani": "शनि",
-        "Saturn": "शनि",
-        "saturn": "शनि",
-
-        "Rahu": "राहु",
-        "rahu": "राहु",
-
-        "Ketu": "केतु",
-        "ketu": "केतु"
-    }
-
-    return aliases.get(
-        planet_name,
-        planet_name
-    )
-
-
-def _utc_jd(
-    moment
-):
-    if moment.tzinfo is None:
-        moment = pytz.utc.localize(
-            moment
-        )
-
-    moment = moment.astimezone(
-        pytz.utc
-    )
-
-    return swe.julday(
-        moment.year,
-        moment.month,
-        moment.day,
-
-        moment.hour
-        +
-        moment.minute / 60.0
-        +
-        (
-            moment.second
-            +
-            moment.microsecond / 1000000.0
-        )
-        / 3600.0
-    )
-
-
-def _transit_position(
-    jd,
-    planet_name
-):
-    swe.set_sid_mode(
-        swe.SIDM_LAHIRI
-    )
-
-    planet_name = (
-        normalize_transit_planet_name(
-            planet_name
-        )
-    )
-
-    if planet_name == "केतु":
-        rahu_lon, _ = sidereal_position(
-            jd,
-            swe.MEAN_NODE
-        )
-
-        return (
-            normalize(
-                rahu_lon + 180.0
-            ),
-            -1.0
-        )
-
-    if planet_name not in PLANET_IDS:
-        raise ValueError(
-            f"Unknown planet: "
-            f"{planet_name}"
-        )
-
-    return sidereal_position(
-        jd,
-        PLANET_IDS[
-            planet_name
-        ]
-    )
-
-
-def _transit_state(
-    moment,
-    planet_name
-):
-    lon, speed = _transit_position(
-        _utc_jd(moment),
-        planet_name
-    )
-
-    return (
-        rashi_index(lon),
-        lon,
-        speed
-    )
-
-
-def _refine_transit(
-    start,
-    end,
-    planet_name,
-    old_sign
-):
-    for _ in range(30):
-        mid = (
-            start
-            +
-            (
-                end - start
-            )
-            / 2
-        )
-
-        sign, _, _ = _transit_state(
-            mid,
-            planet_name
-        )
-
-        if sign == old_sign:
-            start = mid
-        else:
-            end = mid
-
-    return end
-
-
-def _collect_transits_for_planet(
-    start,
-    end,
-    planet_name,
-    step_hours=24
-):
-    planet_name = (
-        normalize_transit_planet_name(
-            planet_name
-        )
-    )
-
-    events = []
-
-    cursor = start
-
-    old_sign, _, _ = _transit_state(
-        cursor,
-        planet_name
-    )
-
-    while cursor < end:
-        nxt = min(
-            cursor +
-            dt.timedelta(
-                hours=step_hours
-            ),
-            end
-        )
-
-        new_sign, _, _ = _transit_state(
-            nxt,
-            planet_name
-        )
-
-        if new_sign != old_sign:
-            when = _refine_transit(
-                cursor,
-                nxt,
-                planet_name,
-                old_sign
-            )
-
-            after_sign, _, after_speed = (
-                _transit_state(
-                    when +
-                    dt.timedelta(
-                        seconds=2
-                    ),
-                    planet_name
-                )
-            )
-
-            local_when = (
-                when.astimezone(
-                    IST
-                )
-            )
-
-            events.append({
-                "planet":
-                    planet_name,
-
-                "from_rashi":
-                    RASHI_NAMES[
-                        old_sign
-                    ],
-
-                "to_rashi":
-                    RASHI_NAMES[
-                        after_sign
-                    ],
-
-                "date":
-                    local_when.isoformat(),
-
-                "transit_date":
-                    local_when.strftime(
-                        "%Y-%m-%d"
-                    ),
-
-                "transit_time":
-                    local_when.strftime(
-                        "%H:%M:%S"
-                    ),
-
-                "motion":
-                    (
-                        "वक्री"
-                        if after_speed < 0
-                        else "मार्गी"
-                    ),
-
-                "timestamp":
-                    when.timestamp()
-            })
-
-            old_sign = after_sign
-
-            cursor = (
-                when +
-                dt.timedelta(
-                    seconds=5
-                )
-            )
-
-        else:
-            cursor = nxt
-
-    events.sort(
-        key=lambda x:
-            x["timestamp"]
-    )
-
-    return events
-
-
-def _collect_transits(
-    start,
-    end,
-    step_hours=2
-):
-    events = []
-
-    for planet_name in PLANET_ORDER:
-        events.extend(
-            _collect_transits_for_planet(
-                start,
-                end,
-                planet_name,
-                step_hours=step_hours
-            )
-        )
-
-    events.sort(
-        key=lambda x:
-            x["timestamp"]
-    )
-
-    return events
-
-
-def _current_transit_positions(
-    now
-):
-    rows = []
-
-    for planet_name in PLANET_ORDER:
-        sign_idx, lon, speed = (
-            _transit_state(
-                now,
-                planet_name
-            )
-        )
-
-        sign_degree = lon % 30.0
-
-        degree = int(
-            sign_degree
-        )
-
-        minute = int(
-            (
-                sign_degree -
-                degree
-            )
-            * 60
-        )
-
-        (
-            nak_idx,
-            nak_name,
-            nak_pada,
-            _,
-            _
-        ) = nakshatra_info(
-            lon
-        )
-
-        rows.append({
-            "planet":
-                planet_name,
-
-            "rashi":
-                RASHI_NAMES[
-                    sign_idx
-                ],
-
-            "degree":
-                f"{degree}° {minute:02d}'",
-
-            "nakshatra":
-                nak_name,
-
-            "pada":
-                nak_pada,
-
-            "motion":
-                (
-                    "वक्री"
-                    if speed < 0
-                    else "मार्गी"
-                )
-        })
-
-    return rows
-
-
-_TRANSIT_SEARCH = {
-    "सूर्य": {
-        "days": 180,
-        "step_hours": 12
-    },
-
-    "चंद्र": {
-        "days": 20,
-        "step_hours": 2
-    },
-
-    "मंगल": {
-        "days": 1200,
-        "step_hours": 24
-    },
-
-    "बुध": {
-        "days": 240,
-        "step_hours": 12
-    },
-
-    "गुरु": {
-        "days": 4500,
-        "step_hours": 72
-    },
-
-    "शुक्र": {
-        "days": 500,
-        "step_hours": 12
-    },
-
-    "शनि": {
-        "days": 15000,
-        "step_hours": 168
-    },
-
-    "राहु": {
-        "days": 3000,
-        "step_hours": 72
-    },
-
-    "केतु": {
-        "days": 3000,
-        "step_hours": 72
-    }
-}
-
-
-def _three_transits_each_side(
-    now,
-    planet_name
-):
-    planet_name = (
-        normalize_transit_planet_name(
-            planet_name
-        )
-    )
-
-    cfg = _TRANSIT_SEARCH[
-        planet_name
-    ]
-
-    days = cfg["days"]
-
-    step_hours = (
-        cfg["step_hours"]
-    )
-
-    past_events = (
-        _collect_transits_for_planet(
-            now -
-            dt.timedelta(
-                days=days
-            ),
-            now,
-            planet_name,
-            step_hours=step_hours
-        )
-    )
-
-    future_events = (
-        _collect_transits_for_planet(
-            now,
-            now +
-            dt.timedelta(
-                days=days
-            ),
-            planet_name,
-            step_hours=step_hours
-        )
-    )
-
-    return {
-        "past":
-            list(
-                reversed(
-                    past_events[-3:]
-                )
-            ),
-
-        "future":
-            future_events[:3]
-    }
-
-
-@app.get("/api/all-transits")
-def all_transits():
+@app.route("/api/generate-kundali", methods=["GET"])
+def kundali_endpoint():
     try:
-        now = dt.datetime.now(
-            pytz.utc
-        )
+        date_str = request.args.get("date")
+        time_str = request.args.get("time")
 
-        current_rows = (
-            _current_transit_positions(
-                now
-            )
-        )
+        if not date_str or not time_str:
+            return jsonify({"success": False, "error": "date and time are required"}), 400
 
-        current_by_planet = {
-            row["planet"]: row
-            for row in current_rows
-        }
+        city = request.args.get("city", DEFAULT_CITY)
+        lat = float(request.args.get("lat", DEFAULT_LAT))
+        lon = float(request.args.get("lon", DEFAULT_LON))
 
-        planets = {}
+        local_dt = parse_date_time(date_str, time_str)
+        jd = get_julian_day(local_dt)
 
-        all_past = []
+        swe.set_sid_mode(swe.SIDM_LAHIRI)
 
-        all_future = []
+        asc_lon, _ = calculate_houses(jd, lat, lon)
+        asc_rashi_idx = rashi_index(asc_lon)
 
-        for planet_name in PLANET_ORDER:
-            sides = (
-                _three_transits_each_side(
-                    now,
-                    planet_name
-                )
-            )
+        sun_lon, _ = sidereal_position(jd, swe.SUN, with_speed=False)
 
-            planets[
-                planet_name
-            ] = {
-                "past":
-                    sides["past"],
+        planets_data = {}
+        for name, pid in PLANET_IDS.items():
+            pos_lon, speed = sidereal_position(jd, pid, with_speed=True)
+            planets_data[name] = planet_record(name, pos_lon, speed, sun_lon)
 
-                "current":
-                    current_by_planet[
-                        planet_name
-                    ],
+        # Ketu: 180° opposite to Rahu
+        rahu_lon = planets_data["राहु"]["longitude"]
+        ketu_lon = normalize(rahu_lon + 180.0)
+        ketu_speed = planets_data["राहु"]["speed"]
+        planets_data["केतु"] = planet_record("केतु", ketu_lon, ketu_speed, sun_lon)
 
-                "future":
-                    sides["future"]
-            }
+        # Whole sign houses
+        planets_in_houses = {i: [] for i in range(1, 13)}
+        for p_name, p_val in planets_data.items():
+            h_num = house_from_equal_whole_sign(p_val["longitude"], asc_lon)
+            p_val["house"] = h_num
+            planets_in_houses[h_num].append(p_name)
 
-            all_past.extend(
-                sides["past"]
-            )
+        moon_p = planets_data["चंद्र"]
+        mars_p = planets_data["मंगल"]
 
-            all_future.extend(
-                sides["future"]
-            )
+        manglik = manglik_status(mars_p["rashi_num"] - 1, asc_rashi_idx)
+        dasha_info = calculate_vimshottari(local_dt, moon_p["longitude"])
 
-        all_past.sort(
-            key=lambda x:
-                x["timestamp"],
-            reverse=True
-        )
-
-        all_future.sort(
-            key=lambda x:
-                x["timestamp"]
-        )
-
-        response = jsonify({
+        return jsonify({
             "success": True,
-
-            "updated_at":
-                now.astimezone(
-                    IST
-                ).isoformat(),
-
-            "timezone":
-                "Asia/Kolkata",
-
             "data": {
-                "past":
-                    all_past,
-
-                "current":
-                    current_rows,
-
-                "future":
-                    all_future,
-
-                "planets":
-                    planets
+                "lagna": {
+                    "rashi": RASHI_NAMES[asc_rashi_idx],
+                    "rashi_num": asc_rashi_idx + 1,
+                    "degree": degree_text(asc_lon),
+                    "longitude": round(asc_lon, 6)
+                },
+                "planets": planets_data,
+                "houses": planets_in_houses,
+                "manglik": manglik,
+                "vimshottari": dasha_info
             }
         })
 
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        return response
-
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
-# ============================================================
-# KUNDALI API
-# ============================================================
-
-@app.route(
-    "/api/generate-kundali",
-    methods=["GET", "POST"]
-)
-def generate_kundali():
+@app.route("/api/search-location", methods=["GET"])
+def location_search_endpoint():
     try:
-        if request.method == "POST":
-            data = (
-                request.get_json(
-                    silent=True
-                )
-                or
-                {}
-            )
-        else:
-            data = request.args
-
-        date_str = (
-            data.get("dob")
-            or
-            data.get("date")
-        )
-
-        time_str = data.get(
-            "time"
-        )
-
-        person_name = data.get(
-            "name",
-            ""
-        )
-
-        city, lat, lon = parse_location(
-            data
-        )
-
-        birth_dt = parse_date_time(
-            date_str,
-            time_str
-        )
-
-        jd = get_julian_day(
-            birth_dt
-        )
-
-        swe.set_sid_mode(
-            swe.SIDM_LAHIRI
-        )
-
-        sun_lon, sun_speed = (
-            sidereal_position(
-                jd,
-                swe.SUN
-            )
-        )
-
-        moon_lon, moon_speed = (
-            sidereal_position(
-                jd,
-                swe.MOON
-            )
-        )
-
-        planet_data = {}
-
-        for planet_name in PLANET_ORDER:
-            if planet_name == "केतु":
-                continue
-
-            planet_id = PLANET_IDS[
-                planet_name
-            ]
-
-            longitude, speed = (
-                sidereal_position(
-                    jd,
-                    planet_id
-                )
-            )
-
-            planet_data[
-                planet_name
-            ] = planet_record(
-                planet_name,
-                longitude,
-                speed,
-                sun_lon
-            )
-
-        rahu_lon = planet_data[
-            "राहु"
-        ]["longitude"]
-
-        ketu_lon = normalize(
-            rahu_lon + 180.0
-        )
-
-        planet_data[
-            "केतु"
-        ] = planet_record(
-            "केतु",
-            ketu_lon,
-            -1.0,
-            sun_lon
-        )
-
-        asc_lon, cusp_list = (
-            calculate_houses(
-                jd,
-                lat,
-                lon
-            )
-        )
-
-        asc_rashi = rashi_index(
-            asc_lon
-        )
-
-        houses = []
-
-        for house_num in range(1, 13):
-            sign_idx = (
-                asc_rashi +
-                house_num -
-                1
-            ) % 12
-
-            houses.append({
-                "house":
-                    house_num,
-
-                "rashi":
-                    RASHI_NAMES[
-                        sign_idx
-                    ],
-
-                "rashi_num":
-                    sign_idx + 1,
-
-                "planets":
-                    []
-            })
-
-        for p_name in PLANET_ORDER:
-            p = planet_data[
-                p_name
-            ]
-
-            h = (
-                house_from_equal_whole_sign(
-                    p["longitude"],
-                    asc_lon
-                )
-            )
-
-            houses[
-                h - 1
-            ]["planets"].append({
-                "name":
-                    p_name,
-
-                "vakri":
-                    p["is_vakri"],
-
-                "asta":
-                    p["is_asta"]
-            })
-
-            p["house"] = h
-
-        (
-            nak_idx,
-            nak_name,
-            nak_pada,
-            nak_lord,
-            namakshara
-        ) = nakshatra_info(
-            moon_lon
-        )
-
-        moon_rashi = rashi_index(
-            moon_lon
-        )
-
-        panchang = (
-            panchang_for_date(
-                date_str,
-                city,
-                lat,
-                lon
-            )["data"]
-        )
-
-        mars_rashi = rashi_index(
-            planet_data[
-                "मंगल"
-            ]["longitude"]
-        )
-
-        manglik = manglik_status(
-            mars_rashi,
-            asc_rashi
-        )
-
-        birth_details = {
-            "name":
-                person_name,
-
-            "date":
-                date_str,
-
-            "time":
-                time_str,
-
-            "city":
-                city,
-
-            "latitude":
-                lat,
-
-            "longitude":
-                lon
-        }
-
-        dasha = (
-            calculate_vimshottari(
-                birth_dt,
-                moon_lon
-            )
-        )
-
-        # ========================================================
-        # NAKSHATRA JANMA PAYA - RULE B
-        # Strictly tied to the same Swiss Ephemeris Moon
-        # longitude / Nakshatra index used above.
-        # No Rashi-based calculation is used here.
-        # 1-5 Swarna, 6-15 Rajat, 16-19 Loha, 20-26 Tamra, 27 Swarna.
-        # ========================================================
-        NAKSHATRA_PAYA_BY_INDEX = {
-            0: "स्वर्ण", 1: "स्वर्ण", 2: "स्वर्ण", 3: "स्वर्ण", 4: "स्वर्ण",
-            5: "रजत", 6: "रजत", 7: "रजत", 8: "रजत", 9: "रजत",
-            10: "रजत", 11: "रजत", 12: "रजत", 13: "रजत", 14: "रजत",
-            15: "लौह", 16: "लौह", 17: "लौह", 18: "लौह",
-            19: "ताम्र", 20: "ताम्र", 21: "ताम्र", 22: "ताम्र",
-            23: "ताम्र", 24: "ताम्र", 25: "ताम्र",
-            26: "स्वर्ण"
-        }
-
-        # nak_idx comes directly from nakshatra_info(moon_lon),
-        # the same Swiss Ephemeris Moon position used for Janma Nakshatra.
-        paya = NAKSHATRA_PAYA_BY_INDEX.get(nak_idx, "--")
-
-        return jsonify({
-            "success": True,
-
-            "birth_details":
-                birth_details,
-
-            "lagna": {
-                "rashi":
-                    RASHI_NAMES[
-                        asc_rashi
-                    ],
-
-                "rashi_num":
-                    asc_rashi + 1,
-
-                "degree":
-                    degree_text(
-                        asc_lon
-                    ),
-
-                "longitude":
-                    round(
-                        asc_lon,
-                        6
-                    )
-            },
-
-            "basic": {
-                "rashi":
-                    RASHI_NAMES[
-                        moon_rashi
-                    ],
-
-                "rashi_lord":
-                    RASHI_LORDS[
-                        moon_rashi
-                    ],
-
-                "janma_nakshatra":
-                    nak_name,
-
-                "nakshatra_pada":
-                    nak_pada,
-
-                "nakshatra_lord":
-                    nak_lord,
-
-                "namakshara":
-                    namakshara,
-
-                "paya":
-                    paya,
-
-                "yoni":
-                    YONI[
-                        nak_idx
-                    ],
-
-                "gana":
-                    GANA[
-                        nak_idx
-                    ],
-
-                "nadi":
-                    NADI[
-                        nak_idx
-                    ],
-
-                "varna":
-                    VARNA_BY_RASHI[
-                        moon_rashi
-                    ],
-
-                "manglik":
-                    manglik
-            },
-
-            "panchang":
-                panchang,
-
-            "planets":
-                planet_data,
-
-            "planet_order":
-                PLANET_ORDER,
-
-            "houses":
-                houses,
-
-            "chart": {
-                "type":
-                    "north_indian",
-
-                "style":
-                    "whole_sign",
-
-                "ascendant_house":
-                    1,
-
-                "houses":
-                    houses
-            },
-
-            "dasha":
-                dasha
-        })
-
+        q = request.args.get("q", "")
+        results = geocode_india(q)
+        return jsonify({"success": True, "data": results})
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.get("/api/dasha")
-def dasha_api():
+@app.route("/api/pincode-lookup", methods=["GET"])
+def pincode_lookup_endpoint():
     try:
-        date_str = (
-            request.args.get("date")
-            or
-            request.args.get("dob")
-        )
-
-        time_str = request.args.get(
-            "time"
-        )
-
-        _, lat, lon = parse_location(
-            request.args
-        )
-
-        birth_dt = parse_date_time(
-            date_str,
-            time_str
-        )
-
-        jd = get_julian_day(
-            birth_dt
-        )
-
-        moon_lon, _ = (
-            sidereal_position(
-                jd,
-                swe.MOON
-            )
-        )
-
-        return jsonify({
-            "success": True,
-
-            "data":
-                calculate_vimshottari(
-                    birth_dt,
-                    moon_lon
-                )
-        })
-
+        q = request.args.get("q", "")
+        results = postal_lookup(q)
+        return jsonify({"success": True, "data": results})
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.get("/api/location")
-def location_api():
-    try:
-        q = request.args.get(
-            "q",
-            ""
-        ).strip()
-
-        if len(q) < 2:
-            return jsonify({
-                "success": False,
-
-                "error":
-                    "Enter a valid Indian "
-                    "PIN, Post Office or "
-                    "City name"
-            }), 400
-
-        return jsonify({
-            "success": True,
-
-            "results":
-                location_search(
-                    q
-                )
-        })
-
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.get("/api/planet-order")
-def planet_order_api():
-    return jsonify({
-        "success": True,
-
-        "order":
-            PLANET_ORDER,
-
-        "order_hindi":
-            "सूर्य → चंद्र → मंगल → बुध → "
-            "गुरु → शुक्र → शनि → राहु → केतु"
-    })
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 if __name__ == "__main__":
-    port = int(
-        os.environ.get(
-            "PORT",
-            5000
-        )
-    )
-
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False
-    )
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
