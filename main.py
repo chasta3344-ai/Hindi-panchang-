@@ -43,33 +43,12 @@ RASHI_LORDS = [
 # ============================================================
 
 NAKSHATRA_NAMES = [
-    "अश्विनी",
-    "भरणी",
-    "कृत्तिका",
-    "रोहिणी",
-    "मृगशिरा",
-    "आर्द्रा",
-    "पुनर्वसु",
-    "पुष्य",
-    "आश्लेषा",
-    "मघा",
-    "पूर्वा फाल्गुनी",
-    "उत्तरा फाल्गुनी",
-    "हस्त",
-    "चित्रा",
-    "स्वाती",
-    "विशाखा",
-    "अनुराधा",
-    "ज्येष्ठा",
-    "मूल",
-    "पूर्वाषाढ़ा",
-    "उत्तराषाढ़ा",
-    "श्रवण",
-    "धनिष्ठा",
-    "शतभिषा",
-    "पूर्वा भाद्रपद",
-    "उत्तरा भाद्रपद",
-    "रेवती"
+    "अश्विनी", "भरणी", "कृत्तिका", "रोहिणी", "मृगशिरा",
+    "आर्द्रा", "पुनर्वसु", "पुष्य", "आश्लेषा", "मघा",
+    "पूर्वा फाल्गुनी", "उत्तरा फाल्गुनी", "हस्त", "चित्रा", "स्वाती",
+    "विशाखा", "अनुराधा", "ज्येष्ठा", "मूल", "पूर्वाषाढ़ा",
+    "उत्तराषाढ़ा", "श्रवण", "धनिष्ठा", "शतभिषा", "पूर्वा भाद्रपद",
+    "उत्तरा भाद्रपद", "रेवती"
 ]
 
 NAKSHATRA_LORDS = [
@@ -360,21 +339,18 @@ def sidereal_position(jd, planet_id, with_speed=True):
 
 
 # ============================================================
-# PURNIMANTA MONTH (UPDATED & CORRECTED)
+# PURNIMANTA MONTH
 # ============================================================
 
 def calculate_purnimanta_month(sun_lon, moon_lon):
     sun_rashi = int(normalize(sun_lon) / 30.0) % 12
     angle_diff = normalize(moon_lon - sun_lon)
-    tithi_idx = int(angle_diff / 12.0)  # 0 to 29
+    tithi_idx = int(angle_diff / 12.0)
 
-    # Standard Amanta base month aligns with sun_rashi:
-    # When Sun is in Leo (index 4), the Amanta month is Bhadrapada (index 5).
+    # Amanta month is aligned with upcoming new moon / sun sign
     amanta_idx = (sun_rashi + 1) % 12
 
-    # In Purnimanta system:
-    # - Shukla Paksha (tithi 0 to 14): Same as Amanta month
-    # - Krishna Paksha (tithi 15 to 29): Starts the NEXT month
+    # Purnimanta month: Krishna Paksha starts the NEXT month
     if tithi_idx >= 15:
         purnimanta_idx = (amanta_idx + 1) % 12
     else:
@@ -475,7 +451,7 @@ def event_time_text(value, base_date):
 
 
 # ============================================================
-# ALL 8 MUHURTAS CALCULATION (Matching Frontend Keys)
+# ALL 8 MUHURTAS
 # ============================================================
 
 def calculate_all_muhurtas(sunrise_dt, sunset_dt):
@@ -491,31 +467,27 @@ def calculate_all_muhurtas(sunrise_dt, sunset_dt):
             "pradosh": "—"
         }
 
-    weekday = sunrise_dt.weekday()  # 0:Mon, 1:Tue, 2:Wed, 3:Thu, 4:Fri, 5:Sat, 6:Sun
+    weekday = sunrise_dt.weekday()
     day_duration = (sunset_dt - sunrise_dt).total_seconds()
     day_part = day_duration / 8.0
     day_muhurta_len = day_duration / 15.0
 
-    # 1. Abhijit Muhurta
     abhijeet_start = sunrise_dt + dt.timedelta(seconds=6 * day_muhurta_len)
     abhijeet_end = abhijeet_start + dt.timedelta(minutes=48)
     abhijeet_str = f"{abhijeet_start.strftime('%I:%M %p')} - {abhijeet_end.strftime('%I:%M %p')}"
 
-    # 2. Rahu Kal
     rahu_parts = {0: 2, 1: 7, 2: 5, 3: 6, 4: 4, 5: 3, 6: 8}
     r_part = rahu_parts.get(weekday, 2)
     rk_start = sunrise_dt + dt.timedelta(seconds=(r_part - 1) * day_part)
     rk_end = rk_start + dt.timedelta(seconds=day_part)
     rahu_str = f"{rk_start.strftime('%I:%M %p')} - {rk_end.strftime('%I:%M %p')}"
 
-    # 3. Gulika Kal
     gulika_parts = {0: 6, 1: 5, 2: 4, 3: 3, 4: 2, 5: 1, 6: 7}
     g_part = gulika_parts.get(weekday, 6)
     gk_start = sunrise_dt + dt.timedelta(seconds=(g_part - 1) * day_part)
     gk_end = gk_start + dt.timedelta(seconds=day_part)
     gulika_str = f"{gk_start.strftime('%I:%M %p')} - {gk_end.strftime('%I:%M %p')}"
 
-    # 4. Durmuhurt
     durmuhurt_parts = {
         0: [8],
         1: [1, 7],
@@ -530,24 +502,20 @@ def calculate_all_muhurtas(sunrise_dt, sunset_dt):
     dm_ends = [s + dt.timedelta(seconds=day_muhurta_len) for s in dm_starts]
     dur_str = ", ".join([f"{s.strftime('%I:%M %p')} - {e.strftime('%I:%M %p')}" for s, e in zip(dm_starts, dm_ends)])
 
-    # 5. Varjyam
     varjyam_start = sunrise_dt + dt.timedelta(seconds=day_duration * 0.6)
     varjyam_end = varjyam_start + dt.timedelta(minutes=96)
     varjyam_str = f"{varjyam_start.strftime('%I:%M %p')} - {varjyam_end.strftime('%I:%M %p')}"
 
-    # 6. Brahma Muhurta
     bm_start = sunrise_dt - dt.timedelta(minutes=96)
     bm_end = sunrise_dt - dt.timedelta(minutes=48)
     brahma_str = f"{bm_start.strftime('%I:%M %p')} - {bm_end.strftime('%I:%M %p')}"
 
-    # 7. Yamagand
     yamagand_part_map = {6: 4, 0: 5, 1: 3, 2: 2, 3: 1, 4: 7, 5: 6}
     yg_part = yamagand_part_map.get(weekday, 5)
     yg_start = sunrise_dt + dt.timedelta(seconds=(yg_part - 1) * day_muhurta_len)
     yg_end = yg_start + dt.timedelta(seconds=day_muhurta_len)
     yamgand_str = f"{yg_start.strftime('%I:%M %p')} - {yg_end.strftime('%I:%M %p')}"
 
-    # 8. Pradosh Kal
     pradosha_start = sunset_dt
     pradosha_end = sunset_dt + dt.timedelta(minutes=120)
     pradosha_str = f"{pradosha_start.strftime('%I:%M %p')} - {pradosha_end.strftime('%I:%M %p')}"
@@ -571,219 +539,73 @@ def panchang_for_date(date_str, city, lat, lon):
         dt.datetime(y, m, d, 12, 0)
     )
 
-    jd = get_julian_day(
-        local_dt
-    )
+    jd = get_julian_day(local_dt)
+    swe.set_sid_mode(swe.SIDM_LAHIRI)
 
-    swe.set_sid_mode(
-        swe.SIDM_LAHIRI
-    )
+    sun_lon, sun_speed = sidereal_position(jd, swe.SUN)
+    moon_lon, moon_speed = sidereal_position(jd, swe.MOON)
 
-    sun_lon, sun_speed = sidereal_position(
-        jd,
-        swe.SUN
-    )
+    angle_diff = normalize(moon_lon - sun_lon)
+    tithi_position = angle_diff / 12.0
+    tithi_idx = min(29, int(tithi_position))
 
-    moon_lon, moon_speed = sidereal_position(
-        jd,
-        swe.MOON
-    )
-
-    angle_diff = normalize(
-        moon_lon - sun_lon
-    )
-
-    tithi_position = (
-        angle_diff / 12.0
-    )
-
-    tithi_idx = min(
-        29,
-        int(tithi_position)
-    )
-
-    paksha = (
-        "शुक्ल पक्ष"
-        if tithi_idx < 15
-        else "कृष्ण पक्ष"
-    )
-
-    rel_speed = (
-        moon_speed - sun_speed
-    )
+    paksha = "शुक्ल पक्ष" if tithi_idx < 15 else "कृष्ण पक्ष"
+    rel_speed = moon_speed - sun_speed
 
     tithi_end = None
-
     if rel_speed > 0:
-        degrees_left = (
-            ((tithi_idx + 1) * 12.0)
-            - angle_diff
-        )
-
-        end_jd = (
-            jd +
-            degrees_left / rel_speed
-        )
-
-        y2, m2, d2, h2 = swe.revjul(
-            end_jd,
-            swe.GREG_CAL
-        )
-
+        degrees_left = ((tithi_idx + 1) * 12.0) - angle_diff
+        end_jd = jd + degrees_left / rel_speed
+        y2, m2, d2, h2 = swe.revjul(end_jd, swe.GREG_CAL)
         utc_end = pytz.utc.localize(
-            dt.datetime(
-                y2,
-                m2,
-                d2
-            )
-            +
-            dt.timedelta(
-                hours=h2
-            )
+            dt.datetime(y2, m2, d2) + dt.timedelta(hours=h2)
         )
+        tithi_end = utc_end.astimezone(IST)
 
-        tithi_end = utc_end.astimezone(
-            IST
-        )
+    nak_idx, nak_name, nak_pada, nak_lord, namakshara = nakshatra_info(moon_lon)
 
-    (
-        nak_idx,
-        nak_name,
-        nak_pada,
-        nak_lord,
-        namakshara
-    ) = nakshatra_info(
-        moon_lon
-    )
+    yoga_idx = int(normalize(sun_lon + moon_lon) / (360.0 / 27.0))
+    yoga_idx = min(26, yoga_idx)
 
-    yoga_idx = int(
-        normalize(
-            sun_lon + moon_lon
-        )
-        /
-        (360.0 / 27.0)
-    )
+    karana_idx = int(angle_diff / 6.0)
+    karan_1 = karana_name(karana_idx)
+    karan_2 = karana_name((karana_idx + 1) % 60)
 
-    yoga_idx = min(
-        26,
-        yoga_idx
-    )
-
-    karana_position = (
-        angle_diff / 6.0
-    )
-
-    karana_idx = int(
-        karana_position
-    )
-
-    karan_1 = karana_name(
-        karana_idx
-    )
-
-    karan_2 = karana_name(
-        (karana_idx + 1) % 60
-    )
-
-    sun_rashi_idx = rashi_index(
-        sun_lon
-    )
-
-    moon_rashi_idx = rashi_index(
-        moon_lon
-    )
+    sun_rashi_idx = rashi_index(sun_lon)
+    moon_rashi_idx = rashi_index(moon_lon)
 
     vikram = y + 57
     shaka = y - 78
     kali = y + 3101
 
-    sunrise_dt = find_sun_event(
-        y, m, d,
-        lat, lon,
-        True
-    )
-
-    sunset_dt = find_sun_event(
-        y, m, d,
-        lat, lon,
-        False
-    )
-
-    moonrise_dt = moon_event(
-        y, m, d,
-        lat, lon,
-        True
-    )
-
-    moonset_dt = moon_event(
-        y, m, d,
-        lat, lon,
-        False
-    )
+    sunrise_dt = find_sun_event(y, m, d, lat, lon, True)
+    sunset_dt = find_sun_event(y, m, d, lat, lon, False)
+    moonrise_dt = moon_event(y, m, d, lat, lon, True)
+    moonset_dt = moon_event(y, m, d, lat, lon, False)
 
     muhurtas = calculate_all_muhurtas(sunrise_dt, sunset_dt)
 
     ayan = (
         "उत्तरायण"
-        if sun_rashi_idx in [
-            9, 10, 11,
-            0, 1, 2
-        ]
+        if sun_rashi_idx in [9, 10, 11, 0, 1, 2]
         else "दक्षिणायन"
     )
 
     ritu_map = {
-        11: "वसंत",
-        0: "वसंत",
-        1: "ग्रीष्म",
-        2: "ग्रीष्म",
-        3: "वर्षा",
-        4: "वर्षा",
-        5: "शरद",
-        6: "शरद",
-        7: "हेमंत",
-        8: "हेमंत",
-        9: "शिशिर",
-        10: "शिशिर"
+        11: "वसंत", 0: "वसंत", 1: "ग्रीष्म", 2: "ग्रीष्म",
+        3: "वर्षा", 4: "वर्षा", 5: "शरद", 6: "शरद",
+        7: "हेमंत", 8: "हेमंत", 9: "शिशिर", 10: "शिशिर"
     }
 
     ishta_kaal = "--"
-
     if sunrise_dt:
-        noon_dt = IST.localize(
-            dt.datetime(
-                y, m, d, 12, 0
-            )
-        )
-
-        minutes = max(
-            0,
-            int(
-                (
-                    noon_dt -
-                    sunrise_dt
-                ).total_seconds()
-                / 60
-            )
-        )
-
+        noon_dt = IST.localize(dt.datetime(y, m, d, 12, 0))
+        minutes = max(0, int((noon_dt - sunrise_dt).total_seconds() / 60))
         ghati = minutes // 24
+        pala = int((minutes % 24) * 2.5)
+        ishta_kaal = f"{ghati} घटी {pala} पल"
 
-        pala = int(
-            (minutes % 24) * 2.5
-        )
-
-        ishta_kaal = (
-            f"{ghati} घटी "
-            f"{pala} पल"
-        )
-
-    maah_purnimant = (
-        calculate_purnimanta_month(
-            sun_lon,
-            moon_lon
-        )
-    )
+    maah_purnimant = calculate_purnimanta_month(sun_lon, moon_lon)
 
     return {
         "success": True,
@@ -793,75 +615,29 @@ def panchang_for_date(date_str, city, lat, lon):
                 "latitude": lat,
                 "longitude": lon
             },
-            "summary_header":
-                f"{TITHI_NAMES[tithi_idx]}, "
-                f"{nak_name} नक्षत्र",
-
+            "summary_header": f"{TITHI_NAMES[tithi_idx]}, {nak_name} नक्षत्र",
             "details": {
-                "tithi":
-                    TITHI_NAMES[
-                        tithi_idx
-                    ],
-
-                "tithi_end_time":
-                    event_time_text(
-                        tithi_end,
-                        local_dt.date()
-                    ),
-
+                "tithi": TITHI_NAMES[tithi_idx],
+                "tithi_end_time": event_time_text(tithi_end, local_dt.date()),
                 "paksha": paksha,
                 "nakshatra": nak_name,
                 "nakshatra_pada": nak_pada,
                 "nakshatra_lord": nak_lord,
                 "namakshara": namakshara,
-
-                "yog":
-                    YOGA_NAMES[
-                        yoga_idx
-                    ],
-
+                "yog": YOGA_NAMES[yoga_idx],
                 "karan_1": karan_1,
                 "karan_2": karan_2,
-
-                "var":
-                    WEEKDAYS[
-                        local_dt.weekday()
-                    ],
-
-                "chandra_rashi":
-                    RASHI_NAMES[
-                        moon_rashi_idx
-                    ],
-
-                "surya_rashi":
-                    RASHI_NAMES[
-                        sun_rashi_idx
-                    ],
-
-                "vikram_samvat":
-                    str(vikram),
-
-                "shaka_samvat":
-                    str(shaka),
-
-                "kali_samvat":
-                    str(kali),
-
+                "var": WEEKDAYS[local_dt.weekday()],
+                "chandra_rashi": RASHI_NAMES[moon_rashi_idx],
+                "surya_rashi": RASHI_NAMES[sun_rashi_idx],
+                "vikram_samvat": str(vikram),
+                "shaka_samvat": str(shaka),
+                "kali_samvat": str(kali),
                 "ayan": ayan,
-
-                "ritu":
-                    ritu_map.get(
-                        sun_rashi_idx,
-                        "--"
-                    ),
-
-                "maah_purnimant":
-                    maah_purnimant,
-
-                "ishta_kaal":
-                    ishta_kaal
+                "ritu": ritu_map.get(sun_rashi_idx, "--"),
+                "maah_purnimant": maah_purnimant,
+                "ishta_kaal": ishta_kaal
             },
-
             "special_timings": {
                 "abhijit_muhurta": muhurtas["abhijit_muhurta"],
                 "rahu_kal": muhurtas["rahu_kal"],
@@ -872,35 +648,11 @@ def panchang_for_date(date_str, city, lat, lon):
                 "yamagand": muhurtas["yamagand"],
                 "pradosh": muhurtas["pradosh"]
             },
-
             "timings": {
-                "sunrise":
-                    sunrise_dt.strftime(
-                        "%I:%M %p"
-                    )
-                    if sunrise_dt
-                    else "--",
-
-                "sunset":
-                    sunset_dt.strftime(
-                        "%I:%M %p"
-                    )
-                    if sunset_dt
-                    else "--",
-
-                "chandrodaya":
-                    moonrise_dt.strftime(
-                        "%I:%M %p"
-                    )
-                    if moonrise_dt
-                    else "--",
-
-                "chandrast":
-                    moonset_dt.strftime(
-                        "%I:%M %p"
-                    )
-                    if moonset_dt
-                    else "--"
+                "sunrise": sunrise_dt.strftime("%I:%M %p") if sunrise_dt else "--",
+                "sunset": sunset_dt.strftime("%I:%M %p") if sunset_dt else "--",
+                "chandrodaya": moonrise_dt.strftime("%I:%M %p") if moonrise_dt else "--",
+                "chandrast": moonset_dt.strftime("%I:%M %p") if moonset_dt else "--"
             }
         }
     }
@@ -910,161 +662,68 @@ def panchang_for_date(date_str, city, lat, lon):
 # KUNDALI HELPERS
 # ============================================================
 
-def planet_record(
-    name,
-    lon,
-    speed,
-    sun_lon
-):
+def planet_record(name, lon, speed, sun_lon):
     sign_idx = rashi_index(lon)
+    nak_idx, nak_name, nak_pada, nak_lord, namakshara = nakshatra_info(lon)
 
-    nak_idx, nak_name, nak_pada, nak_lord, namakshara = (
-        nakshatra_info(lon)
-    )
-
-    degree = lon % 30.0
-
-    sun_distance = abs(
-        normalize(lon - sun_lon)
-    )
-
+    sun_distance = abs(normalize(lon - sun_lon))
     if sun_distance > 180:
-        sun_distance = (
-            360 - sun_distance
-        )
+        sun_distance = 360 - sun_distance
 
     combustion_limits = {
-        "चंद्र": 12,
-        "मंगल": 17,
-        "बुध": 14,
-        "गुरु": 11,
-        "शुक्र": 10,
-        "शनि": 15
+        "चंद्र": 12, "मंगल": 17, "बुध": 14,
+        "गुरु": 11, "शुक्र": 10, "शनि": 15
     }
 
-    is_asta = False
-
-    if (
+    is_asta = (
         name in combustion_limits
-        and sun_distance <=
-        combustion_limits[name]
-    ):
-        is_asta = True
+        and sun_distance <= combustion_limits[name]
+    )
 
     return {
         "name": name,
         "longitude": round(lon, 6),
-        "rashi":
-            RASHI_NAMES[
-                sign_idx
-            ],
-        "rashi_num":
-            sign_idx + 1,
-        "degree":
-            degree_text(lon),
+        "rashi": RASHI_NAMES[sign_idx],
+        "rashi_num": sign_idx + 1,
+        "degree": degree_text(lon),
         "nakshatra": nak_name,
         "nakshatra_pada": nak_pada,
         "nakshatra_lord": nak_lord,
         "namakshara": namakshara,
         "speed": round(speed, 6),
         "is_vakri": speed < 0,
-        "motion":
-            "वक्री"
-            if speed < 0
-            else "मार्गी",
+        "motion": "वक्री" if speed < 0 else "मार्गी",
         "is_asta": is_asta
     }
 
 
-def calculate_houses(
-    jd,
-    lat,
-    lon
-):
+def calculate_houses(jd, lat, lon):
     try:
         cusps, ascmc = swe.houses_ex(
-            jd,
-            lat,
-            lon,
-            b"P",
-            swe.FLG_SIDEREAL
+            jd, lat, lon, b"P", swe.FLG_SIDEREAL
         )
-
-        asc = normalize(
-            ascmc[0]
-        )
-
-        cusp_list = [
-            normalize(
-                cusps[i]
-            )
-            for i in range(12)
-        ]
-
+        asc = normalize(ascmc[0])
+        cusp_list = [normalize(cusps[i]) for i in range(12)]
         return asc, cusp_list
-
     except Exception:
-        cusps, ascmc = swe.houses(
-            jd,
-            lat,
-            lon,
-            b"P"
-        )
-
-        ayan = swe.get_ayanamsa_ut(
-            jd
-        )
-
-        asc = normalize(
-            ascmc[0] - ayan
-        )
-
-        cusp_list = [
-            normalize(c - ayan)
-            for c in cusps[:12]
-        ]
-
+        cusps, ascmc = swe.houses(jd, lat, lon, b"P")
+        ayan = swe.get_ayanamsa_ut(jd)
+        asc = normalize(ascmc[0] - ayan)
+        cusp_list = [normalize(c - ayan) for c in cusps[:12]]
         return asc, cusp_list
 
 
-def house_from_equal_whole_sign(
-    lon,
-    asc_lon
-):
-    return (
-        (
-            rashi_index(lon)
-            -
-            rashi_index(asc_lon)
-        )
-        % 12
-    ) + 1
+def house_from_equal_whole_sign(lon, asc_lon):
+    return ((rashi_index(lon) - rashi_index(asc_lon)) % 12) + 1
 
 
-def manglik_status(
-    mars_rashi,
-    asc_rashi
-):
-    house = (
-        (
-            mars_rashi -
-            asc_rashi
-        )
-        % 12
-    ) + 1
-
-    is_manglik = house in [
-        1, 4, 7, 8, 12
-    ]
-
+def manglik_status(mars_rashi, asc_rashi):
+    house = ((mars_rashi - asc_rashi) % 12) + 1
+    is_manglik = house in [1, 4, 7, 8, 12]
     return {
         "is_manglik": is_manglik,
-        "status":
-            "मांगलिक है"
-            if is_manglik
-            else "मांगलिक नहीं",
-        "mars_house_from_lagna":
-            house
+        "status": "मांगलिक है" if is_manglik else "मांगलिक नहीं",
+        "mars_house_from_lagna": house
     }
 
 
@@ -1072,223 +731,83 @@ def manglik_status(
 # VIMSHOTTARI DASHA
 # ============================================================
 
-def add_years(
-    base_date,
-    years
-):
+def add_years(base_date, years):
     days = years * 365.2425
-
-    return (
-        base_date +
-        dt.timedelta(
-            days=days
-        )
-    )
+    return base_date + dt.timedelta(days=days)
 
 
-def dasha_sequence(
-    start_lord
-):
-    idx = DASHA_ORDER.index(
-        start_lord
-    )
-
-    return (
-        DASHA_ORDER[idx:]
-        +
-        DASHA_ORDER[:idx]
-    )
+def dasha_sequence(start_lord):
+    idx = DASHA_ORDER.index(start_lord)
+    return DASHA_ORDER[idx:] + DASHA_ORDER[:idx]
 
 
-def build_antardashas(
-    maha_lord,
-    maha_start,
-    maha_end,
-    now
-):
-    total_maha_days = (
-        maha_end -
-        maha_start
-    ).total_seconds() / 86400.0
-
+def build_antardashas(maha_lord, maha_start, maha_end, now):
+    total_maha_days = (maha_end - maha_start).total_seconds() / 86400.0
     result = []
-
     cursor = maha_start
 
-    for lord in dasha_sequence(
-        maha_lord
-    ):
-        duration_days = (
-            total_maha_days
-            *
-            DASHA_YEARS[lord]
-            /
-            120.0
-        )
-
-        end = (
-            cursor +
-            dt.timedelta(
-                days=duration_days
-            )
-        )
-
+    for lord in dasha_sequence(maha_lord):
+        duration_days = total_maha_days * DASHA_YEARS[lord] / 120.0
+        end = cursor + dt.timedelta(days=duration_days)
         result.append({
             "planet": lord,
-            "start":
-                cursor.strftime(
-                    "%d-%m-%Y"
-                ),
-            "end":
-                end.strftime(
-                    "%d-%m-%Y"
-                ),
-            "current":
-                cursor <= now < end
+            "start": cursor.strftime("%d-%m-%Y"),
+            "end": end.strftime("%d-%m-%Y"),
+            "current": cursor <= now < end
         })
-
         cursor = end
 
     return result
 
 
-def calculate_vimshottari(
-    dob_local,
-    moon_lon
-):
-    (
-        nak_idx,
-        nak_name,
-        pada,
-        nak_lord,
-        namakshara
-    ) = nakshatra_info(
-        moon_lon
-    )
-
+def calculate_vimshottari(dob_local, moon_lon):
+    nak_idx, nak_name, pada, nak_lord, namakshara = nakshatra_info(moon_lon)
     span = 360.0 / 27.0
-
     nak_start = nak_idx * span
-
-    travelled = (
-        normalize(moon_lon)
-        -
-        nak_start
-    )
-
-    fraction_completed = max(
-        0.0,
-        min(
-            1.0,
-            travelled / span
-        )
-    )
+    travelled = normalize(moon_lon) - nak_start
+    fraction_completed = max(0.0, min(1.0, travelled / span))
 
     first_lord = nak_lord
+    first_years_remaining = DASHA_YEARS[first_lord] * (1.0 - fraction_completed)
 
-    first_years_remaining = (
-        DASHA_YEARS[first_lord]
-        *
-        (
-            1.0 -
-            fraction_completed
-        )
-    )
+    # Format dasha bhogya in years, months, days
+    rem_y = int(first_years_remaining)
+    rem_m = int((first_years_remaining - rem_y) * 12)
+    rem_d = int((((first_years_remaining - rem_y) * 12) - rem_m) * 30)
+    dasha_bhogya_text = f"{first_lord} {rem_y} वर्ष {rem_m} माह {rem_d} दिन"
 
-    birth_date = dob_local
-    cursor = birth_date
-
-    now = dt.datetime.now(
-        IST
-    )
-
+    cursor = dob_local
+    now = dt.datetime.now(IST)
     mahadashas = []
-
     first = True
 
-    while len(mahadashas) < 18:
-        lord = (
-            first_lord
-            if first
-            else DASHA_ORDER[
-                (
-                    DASHA_ORDER.index(
-                        first_lord
-                    )
-                    +
-                    len(mahadashas)
-                )
-                % 9
-            ]
-        )
-
-        years = (
-            first_years_remaining
-            if first
-            else DASHA_YEARS[lord]
-        )
-
-        end = add_years(
-            cursor,
-            years
-        )
+    while len(mahadashas) < 9:
+        lord = first_lord if first else DASHA_ORDER[(DASHA_ORDER.index(first_lord) + len(mahadashas)) % 9]
+        years = first_years_remaining if first else DASHA_YEARS[lord]
+        end = add_years(cursor, years)
 
         mahadashas.append({
             "planet": lord,
-
-            "start":
-                cursor.strftime(
-                    "%d-%m-%Y"
-                ),
-
-            "end":
-                end.strftime(
-                    "%d-%m-%Y"
-                ),
-
-            "years":
-                round(
-                    years,
-                    4
-                ),
-
-            "current":
-                cursor <= now < end,
-
-            "antardasha":
-                build_antardashas(
-                    lord,
-                    cursor,
-                    end,
-                    now
-                )
+            "start": cursor.strftime("%d-%m-%Y"),
+            "end": end.strftime("%d-%m-%Y"),
+            "years": round(years, 4),
+            "current": cursor <= now < end,
+            "antardasha": build_antardashas(lord, cursor, end, now)
         })
 
         cursor = end
         first = False
 
-    current_maha = next(
-        (
-            x for x in mahadashas
-            if x["current"]
-        ),
-        None
-    )
+    current_maha = next((x for x in mahadashas if x["current"]), None)
 
     return {
         "nakshatra": nak_name,
         "nakshatra_pada": pada,
         "namakshara": namakshara,
-        "starting_mahadasha":
-            first_lord,
-
-        "current_mahadasha":
-            current_maha["planet"]
-            if current_maha
-            else None,
-
-        "mahadasha":
-            mahadashas
+        "dasha_bhogya": dasha_bhogya_text,
+        "starting_mahadasha": first_lord,
+        "current_mahadasha": current_maha["planet"] if current_maha else None,
+        "mahadasha": mahadashas
     }
 
 
@@ -1304,12 +823,8 @@ USER_AGENT = "HindiPanchang-Kundali/2.1"
 def http_json(url, timeout=12):
     req = urllib.request.Request(
         url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "application/json"
-        }
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
     )
-
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -1322,27 +837,20 @@ def geocode_india(query, limit=8):
         "limit": limit,
         "countrycodes": "in"
     })
-
     items = http_json(NOMINATIM_API + "?" + params)
     result = []
-
     for item in items:
         address = item.get("address", {})
         result.append({
             "display_name": item.get("display_name", query),
             "city": (
-                address.get("city")
-                or address.get("town")
-                or address.get("village")
-                or address.get("municipality")
-                or address.get("county")
-                or query
+                address.get("city") or address.get("town") or
+                address.get("village") or address.get("municipality") or
+                address.get("county") or query
             ),
             "district": (
-                address.get("state_district")
-                or address.get("district")
-                or address.get("county")
-                or ""
+                address.get("state_district") or address.get("district") or
+                address.get("county") or ""
             ),
             "state": address.get("state", ""),
             "pincode": address.get("postcode", ""),
@@ -1350,13 +858,11 @@ def geocode_india(query, limit=8):
             "latitude": float(item["lat"]),
             "longitude": float(item["lon"])
         })
-
     return result
 
 
 def postal_lookup(query):
     q = (query or "").strip()
-
     if not q:
         return []
 
@@ -1374,13 +880,11 @@ def postal_lookup(query):
         return []
 
     first = payload[0] or {}
-
     if str(first.get("Status", "")).lower() != "success":
         return []
 
     offices = first.get("PostOffice") or []
     result = []
-
     for office in offices:
         result.append({
             "post_office": office.get("Name", ""),
@@ -1392,7 +896,6 @@ def postal_lookup(query):
             "district": office.get("District", ""),
             "pincode": office.get("Pincode", "")
         })
-
     return result
 
 
@@ -1460,6 +963,8 @@ def kundali_endpoint():
 
         moon_p = planets_data["चंद्र"]
         mars_p = planets_data["मंगल"]
+        moon_rashi_idx = rashi_index(moon_p["longitude"])
+        nak_idx, nak_name, nak_pada, nak_lord, namakshara = nakshatra_info(moon_p["longitude"])
 
         manglik = manglik_status(mars_p["rashi_num"] - 1, asc_rashi_idx)
         dasha_info = calculate_vimshottari(local_dt, moon_p["longitude"])
@@ -1472,6 +977,19 @@ def kundali_endpoint():
                     "rashi_num": asc_rashi_idx + 1,
                     "degree": degree_text(asc_lon),
                     "longitude": round(asc_lon, 6)
+                },
+                "moon_details": {
+                    "rashi": RASHI_NAMES[moon_rashi_idx],
+                    "rashi_num": moon_rashi_idx + 1,
+                    "rashi_lord": RASHI_LORDS[moon_rashi_idx],
+                    "nakshatra": nak_name,
+                    "nakshatra_pada": nak_pada,
+                    "nakshatra_lord": nak_lord,
+                    "namakshara": namakshara,
+                    "gan": GANA[nak_idx],
+                    "nadi": NADI[nak_idx],
+                    "yoni": YONI[nak_idx],
+                    "varna": VARNA_BY_RASHI[moon_rashi_idx]
                 },
                 "planets": planets_data,
                 "houses": planets_in_houses,
