@@ -12,7 +12,7 @@ import os
 import re
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # ============================================================
 # CONFIG
@@ -124,7 +124,7 @@ TITHI_NAMES = [
     "एकादशी", "द्वादशी", "त्रयोदशी", "चतुर्दशी", "पूर्णिमा",
     "प्रतिपदा", "द्वितीया", "तृतीया", "चतुर्थी", "पंचमी",
     "षष्ठी", "सप्तमी", "अष्टमी", "नवमी", "दशमी",
-    "एकादशी", "द्वादशी", "त्रयोर्दशी", "चतुर्दशी", "अमावस्या"
+    "एकादशी", "द्वादशी", "त्रयोदशी", "चतुर्दशी", "अमावस्या"
 ]
 
 # ============================================================
@@ -360,77 +360,20 @@ def sidereal_position(jd, planet_id, with_speed=True):
 
 
 # ============================================================
-# PURNIMANTA MONTH (EXACT TRANSITION ON KRISHNA PRATIPADA)
+# PURNIMANTA MONTH
 # ============================================================
 
-def _find_amavasya_jd(jd, find_next=False):
-    swe.set_sid_mode(swe.SIDM_LAHIRI)
-    step = 0.5 if find_next else -0.5
-    curr = jd
-    for _ in range(70):
-        s_pos, _ = swe.calc_ut(curr, swe.SUN, swe.FLG_SIDEREAL)
-        m_pos, _ = swe.calc_ut(curr, swe.MOON, swe.FLG_SIDEREAL)
-        diff = (m_pos[0] - s_pos[0]) % 360.0
-        if find_next and diff < 15.0:
-            break
-        elif not find_next and diff > 345.0:
-            break
-        curr += step
-
-    low = curr - abs(step)
-    high = curr + abs(step)
-    for _ in range(25):
-        mid = (low + high) / 2.0
-        s_pos, _ = swe.calc_ut(mid, swe.SUN, swe.FLG_SIDEREAL)
-        m_pos, _ = swe.calc_ut(mid, swe.MOON, swe.FLG_SIDEREAL)
-        diff = (m_pos[0] - s_pos[0]) % 360.0
-        if diff > 180.0:
-            diff -= 360.0
-        if diff > 0:
-            if find_next:
-                high = mid
-            else:
-                low = mid
-        else:
-            if find_next:
-                low = mid
-            else:
-                high = mid
-    return (low + high) / 2.0
-
-
-def calculate_purnimanta_month(sun_lon, moon_lon, jd=None):
+def calculate_purnimanta_month(sun_lon, moon_lon):
+    sun_rashi = int(sun_lon / 30.0) % 12
     angle_diff = normalize(moon_lon - sun_lon)
-    tithi_idx = int(angle_diff / 12.0)
+    tithi_deg = angle_diff / 12.0
+    base_idx = sun_rashi
 
-    if jd is not None:
-        try:
-            prev_amav_jd = _find_amavasya_jd(jd, find_next=False)
-            next_amav_jd = _find_amavasya_jd(jd, find_next=True)
+    if tithi_deg >= 15:
+        purnimant_idx = (base_idx + 1) % 12
+    else:
+        purnimant_idx = base_idx
 
-            s_prev, _ = swe.calc_ut(prev_amav_jd, swe.SUN, swe.FLG_SIDEREAL)
-            s_next, _ = swe.calc_ut(next_amav_jd, swe.SUN, swe.FLG_SIDEREAL)
-
-            r_start = int(s_prev[0] / 30.0) % 12
-            r_end = int(s_next[0] / 30.0) % 12
-
-            is_adhik = (r_start == r_end)
-            amanta_idx = (r_start + 1) % 12
-
-            # Advances immediately upon starting Krishna Pratipada (tithi_idx >= 15)
-            if tithi_idx >= 15:
-                purnimant_idx = (amanta_idx + 1) % 12
-            else:
-                purnimant_idx = amanta_idx
-
-            name = HINDI_MONTHS[purnimant_idx]
-            return f"अधिक {name}" if is_adhik else name
-        except Exception:
-            pass
-
-    sun_rashi = int(normalize(sun_lon) / 30.0) % 12
-    amanta_idx = (sun_rashi + 1) % 12
-    purnimant_idx = (amanta_idx + 1) % 12 if tithi_idx >= 15 else amanta_idx
     return HINDI_MONTHS[purnimant_idx]
 
 
@@ -542,7 +485,7 @@ def calculate_all_muhurtas(sunrise_dt, sunset_dt):
             "pradosh": "—"
         }
 
-    weekday = sunrise_dt.weekday()
+    weekday = sunrise_dt.weekday() 
     day_duration = (sunset_dt - sunrise_dt).total_seconds()
     day_part = day_duration / 8.0
     day_muhurta_len = day_duration / 15.0
@@ -824,8 +767,7 @@ def panchang_for_date(date_str, city, lat, lon):
     maah_purnimant = (
         calculate_purnimanta_month(
             sun_lon,
-            moon_lon,
-            jd
+            moon_lon
         )
     )
 
