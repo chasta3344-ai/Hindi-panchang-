@@ -367,7 +367,7 @@ def calculate_purnimanta_month(sun_lon, moon_lon):
     sun_rashi = int(sun_lon / 30.0) % 12
     angle_diff = normalize(moon_lon - sun_lon)
     tithi_deg = angle_diff / 12.0
-    base_idx = sun_rashi
+    base_idx = (sun_rashi + 1) % 12
 
     if tithi_deg >= 15:
         purnimant_idx = (base_idx + 1) % 12
