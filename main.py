@@ -210,7 +210,7 @@ DASHA_ORDER = [
 YONI = [
     "अश्व", "गज", "मेष", "सर्प", "सर्प", "श्वान",
     "मार्जार", "मेष", "मार्जार", "मूषक", "मूषक",
-    "गौ", "महिष", "व्याघ्र", "महिष", "व्याघ्र",
+    "गौ", "mहिष", "व्याघ्र", "महिष", "व्याघ्र",
     "मृग", "मृग", "श्वान", "वानर", "नकुल",
     "वानर", "अश्व", "गज", "अश्व", "सिंह", "गौ"
 ]
@@ -360,31 +360,42 @@ def sidereal_position(jd, planet_id, with_speed=True):
 
 
 # ============================================================
-# PURNIMANTA MONTH (Universal Daily Fix)
+# PURNIMANTA MONTH (Strict Amant / Purnimanta Vedic Standard)
 # ============================================================
 
-def calculate_purnimanta_month(sun_lon, moon_lon):
-    # Determine the sidereal solar month (Mesha=0 -> Chaitra=0 alignment)
-    # In traditional Hindu astronomy, solar sign transition marks the entry/reference point.
-    sun_rashi = int(sun_lon / 30.0) % 12
-    # Standard alignment: Mesha rashi (0) corresponds to Chaitra (0). 
-    # Therefore, solar month index equals sun_rashi.
-    base_solar_month = sun_rashi
-
-    # Calculate angular distance (elongation) of Moon from Sun (0 to 360 degrees)
-    angle_diff = normalize(moon_lon - sun_lon)
+def calculate_purnimanta_month(jd, sun_lon, moon_lon):
+    swe.set_sid_mode(swe.SIDM_LAHIRI)
     
-    # Each tithi occupies 12 degrees
+    # Find the most recent Amavasya (New Moon where elongation Sun-Moon is 0°) or search backward
+    # We step back up to 35 days looking for the exact New Moon (elongation crossing 0° / 360°)
+    search_jd = jd
+    found_sun_lon_at_amavasya = sun_lon
+    
+    for _ in range(35):
+        s_lon, _ = sidereal_position(search_jd, swe.SUN, with_speed=False)
+        m_lon, _ = sidereal_position(search_jd, swe.MOON, with_speed=False)
+        diff = normalize(m_lon - s_lon)
+        # If diff is close to 360 or 0, or we cross the boundary, refine
+        if diff > 350 or diff < 10:
+            found_sun_lon_at_amavasya = s_lon
+            break
+        search_jd -= 1.0
+
+    # In traditional Hindu astronomy:
+    # Chaitra starts when the Sun is in Meena/Mesha during the preceding Amavasya.
+    # Specifically, the Amant month index is (Sun's sidereal sign at Amavasya).
+    # In Purnimanta, the month starts on Krishna Pratipada, meaning Shukla paksha 
+    # of the current lunar month actually bears the name of the *next* solar sign entry.
+    amant_month_idx = int(found_sun_lon_at_amavasya / 30.0) % 12
+    
+    angle_diff = normalize(moon_lon - sun_lon)
     tithi_deg = angle_diff / 12.0
 
-    # In the Purnimanta system:
-    # - Krishna Paksha (tithi_deg >= 15) belongs to the current solar month name.
-    # - Shukla Paksha (tithi_deg < 15) belongs to the subsequent month because 
-    #   the month formally shifts on Krishna Pratipada right after Purnima.
+    # Purnimanta shifts forward by 1 month during Shukla Paksha (tithi 0 to 14)
     if tithi_deg < 15:
-        purnimant_idx = (base_solar_month + 1) % 12
+        purnimant_idx = (amant_month_idx + 1) % 12
     else:
-        purnimant_idx = base_solar_month
+        purnimant_idx = amant_month_idx
 
     return HINDI_MONTHS[purnimant_idx]
 
@@ -778,6 +789,7 @@ def panchang_for_date(date_str, city, lat, lon):
 
     maah_purnimant = (
         calculate_purnimanta_month(
+            jd,
             sun_lon,
             moon_lon
         )
