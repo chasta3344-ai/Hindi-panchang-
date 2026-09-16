@@ -166,9 +166,6 @@ def _find_amavasya_jd(jd, find_next=False):
 
 
 def calculate_purnimanta_month(sun_lon, moon_lon, jd=None):
-    # Purnimanta month logic copied from the verified Panchang backend.
-    # The month is determined from the Amavasya-to-Amavasya solar rashi,
-    # then Krishna Paksha is assigned to the following Purnimanta month.
     angle_diff = (moon_lon - sun_lon) % 360.0
     tithi_idx = int(angle_diff / 12.0)
 
@@ -177,38 +174,26 @@ def calculate_purnimanta_month(sun_lon, moon_lon, jd=None):
             prev_amav_jd = _find_amavasya_jd(jd, find_next=False)
             next_amav_jd = _find_amavasya_jd(jd, find_next=True)
 
-            s_prev, _ = swe.calc_ut(
-                prev_amav_jd, swe.SUN, swe.FLG_SIDEREAL
-            )
-            s_next, _ = swe.calc_ut(
-                next_amav_jd, swe.SUN, swe.FLG_SIDEREAL
-            )
+            s_prev, _ = swe.calc_ut(prev_amav_jd, swe.SUN, swe.FLG_SIDEREAL)
+            s_next, _ = swe.calc_ut(next_amav_jd, swe.SUN, swe.FLG_SIDEREAL)
 
             r_start = int(s_prev[0] / 30.0) % 12
             r_end = int(s_next[0] / 30.0) % 12
 
-            # Same solar rashi at both Amavasyas = Adhik Maas.
             is_adhik = (r_start == r_end)
-
-            # Amanta month starts from the solar rashi following the
-            # previous Amavasya. Convert it to Purnimanta month.
             amanta_idx = (r_start + 1) % 12
 
-            # Purnimanta month changes at Krishna Pratipada.
+            # Changes to next month strictly at Krishna Pratipada (tithi_idx >= 15)
             if tithi_idx >= 15:
                 purnimant_idx = (amanta_idx + 1) % 12
             else:
                 purnimant_idx = amanta_idx
 
             name = HINDI_MONTHS[purnimant_idx]
-            return (
-                f"अधिक {name}" if is_adhik else name,
-                purnimant_idx
-            )
+            return f"अधिक {name}" if is_adhik else name, purnimant_idx
         except Exception:
             pass
 
-    # Safe fallback when Julian day is unavailable.
     sun_rashi = int((sun_lon % 360.0) / 30.0) % 12
     amanta_idx = (sun_rashi + 1) % 12
     purnimant_idx = (amanta_idx + 1) % 12 if tithi_idx >= 15 else amanta_idx
