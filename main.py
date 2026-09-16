@@ -210,7 +210,7 @@ DASHA_ORDER = [
 YONI = [
     "अश्व", "गज", "मेष", "सर्प", "सर्प", "श्वान",
     "मार्जार", "मेष", "मार्जार", "मूषक", "मूषक",
-    "गौ", "mहिष", "व्याघ्र", "महिष", "व्याघ्र",
+    "गौ", "महिष", "व्याघ्र", "महिष", "व्याघ्र",
     "मृग", "मृग", "श्वान", "वानर", "नकुल",
     "वानर", "अश्व", "गज", "अश्व", "सिंह", "गौ"
 ]
@@ -360,43 +360,76 @@ def sidereal_position(jd, planet_id, with_speed=True):
 
 
 # ============================================================
-# PURNIMANTA MONTH (Strict Amant / Purnimanta Vedic Standard)
+# PURNIMANTA MONTH (Precise Amavasya Scan & Pratipada Transition)
 # ============================================================
 
-def calculate_purnimanta_month(jd, sun_lon, moon_lon):
+def _find_amavasya_jd(jd, find_next=False):
     swe.set_sid_mode(swe.SIDM_LAHIRI)
-    
-    # Find the most recent Amavasya (New Moon where elongation Sun-Moon is 0°) or search backward
-    # We step back up to 35 days looking for the exact New Moon (elongation crossing 0° / 360°)
-    search_jd = jd
-    found_sun_lon_at_amavasya = sun_lon
-    
-    for _ in range(35):
-        s_lon, _ = sidereal_position(search_jd, swe.SUN, with_speed=False)
-        m_lon, _ = sidereal_position(search_jd, swe.MOON, with_speed=False)
-        diff = normalize(m_lon - s_lon)
-        # If diff is close to 360 or 0, or we cross the boundary, refine
-        if diff > 350 or diff < 10:
-            found_sun_lon_at_amavasya = s_lon
+    step = 0.5 if find_next else -0.5
+    curr = jd
+    for _ in range(70):
+        s_pos, _ = swe.calc_ut(curr, swe.SUN, swe.FLG_SIDEREAL)
+        m_pos, _ = swe.calc_ut(curr, swe.MOON, swe.FLG_SIDEREAL)
+        diff = (m_pos[0] - s_pos[0]) % 360.0
+        if find_next and diff < 15.0:
             break
-        search_jd -= 1.0
+        elif not find_next and diff > 345.0:
+            break
+        curr += step
 
-    # In traditional Hindu astronomy:
-    # Chaitra starts when the Sun is in Meena/Mesha during the preceding Amavasya.
-    # Specifically, the Amant month index is (Sun's sidereal sign at Amavasya).
-    # In Purnimanta, the month starts on Krishna Pratipada, meaning Shukla paksha 
-    # of the current lunar month actually bears the name of the *next* solar sign entry.
-    amant_month_idx = int(found_sun_lon_at_amavasya / 30.0) % 12
-    
-    angle_diff = normalize(moon_lon - sun_lon)
-    tithi_deg = angle_diff / 12.0
+    low = curr - abs(step)
+    high = curr + abs(step)
+    for _ in range(25):
+        mid = (low + high) / 2.0
+        s_pos, _ = swe.calc_ut(mid, swe.SUN, swe.FLG_SIDEREAL)
+        m_pos, _ = swe.calc_ut(mid, swe.MOON, swe.FLG_SIDEREAL)
+        diff = (m_pos[0] - s_pos[0]) % 360.0
+        if diff > 180.0:
+            diff -= 360.0
+        if diff > 0:
+            if find_next:
+                high = mid
+            else:
+                low = mid
+        else:
+            if find_next:
+                low = mid
+            else:
+                high = mid
+    return (low + high) / 2.0
 
-    # Purnimanta shifts forward by 1 month during Shukla Paksha (tithi 0 to 14)
-    if tithi_deg < 15:
-        purnimant_idx = (amant_month_idx + 1) % 12
-    else:
-        purnimant_idx = amant_month_idx
 
+def calculate_purnimanta_month(sun_lon, moon_lon, jd=None):
+    angle_diff = (moon_lon - sun_lon) % 360.0
+    tithi_idx = int(angle_diff / 12.0)
+
+    if jd is not None:
+        try:
+            prev_amav_jd = _find_amavasya_jd(jd, find_next=False)
+            next_amav_jd = _find_amavasya_jd(jd, find_next=True)
+
+            s_prev, _ = swe.calc_ut(prev_amav_jd, swe.SUN, swe.FLG_SIDEREAL)
+            s_next, _ = swe.calc_ut(next_amav_jd, swe.SUN, swe.FLG_SIDEREAL)
+
+            r_start = int(s_prev[0] / 30.0) % 12
+            r_end = int(s_next[0] / 30.0) % 12
+
+            is_adhik = (r_start == r_end)
+            amanta_idx = (r_start + 1) % 12
+
+            if tithi_idx >= 15:
+                purnimant_idx = (amanta_idx + 1) % 12
+            else:
+                purnimant_idx = amanta_idx
+
+            name = HINDI_MONTHS[purnimant_idx]
+            return f"अधिक {name}" if is_adhik else name
+        except Exception:
+            pass
+
+    sun_rashi = int((sun_lon % 360.0) / 30.0) % 12
+    amanta_idx = (sun_rashi + 1) % 12
+    purnimant_idx = (amanta_idx + 1) % 12 if tithi_idx >= 15 else amanta_idx
     return HINDI_MONTHS[purnimant_idx]
 
 
@@ -789,9 +822,9 @@ def panchang_for_date(date_str, city, lat, lon):
 
     maah_purnimant = (
         calculate_purnimanta_month(
-            jd,
             sun_lon,
-            moon_lon
+            moon_lon,
+            jd
         )
     )
 
