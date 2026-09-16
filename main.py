@@ -360,19 +360,31 @@ def sidereal_position(jd, planet_id, with_speed=True):
 
 
 # ============================================================
-# PURNIMANTA MONTH
+# PURNIMANTA MONTH (Universal Daily Fix)
 # ============================================================
 
 def calculate_purnimanta_month(sun_lon, moon_lon):
+    # Determine the sidereal solar month (Mesha=0 -> Chaitra=0 alignment)
+    # In traditional Hindu astronomy, solar sign transition marks the entry/reference point.
     sun_rashi = int(sun_lon / 30.0) % 12
-    angle_diff = normalize(moon_lon - sun_lon)
-    tithi_deg = angle_diff / 12.0
-    base_idx = (sun_rashi + 1) % 12
+    # Standard alignment: Mesha rashi (0) corresponds to Chaitra (0). 
+    # Therefore, solar month index equals sun_rashi.
+    base_solar_month = sun_rashi
 
-    if tithi_deg >= 15:
-        purnimant_idx = (base_idx + 1) % 12
+    # Calculate angular distance (elongation) of Moon from Sun (0 to 360 degrees)
+    angle_diff = normalize(moon_lon - sun_lon)
+    
+    # Each tithi occupies 12 degrees
+    tithi_deg = angle_diff / 12.0
+
+    # In the Purnimanta system:
+    # - Krishna Paksha (tithi_deg >= 15) belongs to the current solar month name.
+    # - Shukla Paksha (tithi_deg < 15) belongs to the subsequent month because 
+    #   the month formally shifts on Krishna Pratipada right after Purnima.
+    if tithi_deg < 15:
+        purnimant_idx = (base_solar_month + 1) % 12
     else:
-        purnimant_idx = base_idx
+        purnimant_idx = base_solar_month
 
     return HINDI_MONTHS[purnimant_idx]
 
